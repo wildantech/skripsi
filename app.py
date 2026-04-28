@@ -4,6 +4,7 @@ import folium
 from streamlit_folium import st_folium
 import json
 from shapely.geometry import shape, Point
+from streamlit_gsheets import GSheetsConnection
 
 # 1. KONFIGURASI HALAMAN
 st.set_page_config(
@@ -21,7 +22,7 @@ st.markdown("""
     .stApp { background-color: #0b0e11; color: #e1e4e8; }
     h1, h2, h3, p, span, div { font-family: 'Inter', sans-serif !important; }
 
-    /* Menghilangkan Header Default & Bug Arrow */
+    /* Menghilangkan Header Default */
     header {visibility: hidden;}
     button[kind="headerNoPadding"] { display: none; }
     
@@ -52,7 +53,7 @@ st.markdown("""
     .status-badge {
         padding: 6px 14px;
         border-radius: 20px;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 600;
         text-transform: uppercase;
     }
@@ -61,7 +62,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. KONSTANTA ACUAN (STANDAR CABAI)
+# 2. KONSTANTA ACUAN
 N_OPTIMAL = 80.0
 PH_MIN = 5.5
 PH_MAX = 6.8
@@ -69,24 +70,25 @@ PH_MAX = 6.8
 if 'clicked_data' not in st.session_state:
     st.session_state.clicked_data = None
 
-# 3. FUNGSI DATA (DENGAN CACHE)
+# 3. FUNGSI DATA (KONEKSI GOOGLE SHEETS)
+@st.cache_data(ttl=60) # Refresh data setiap 60 detik
+def load_data_from_sheets():
+    # URL Google Sheet Mas Wildan
+    url = "https://docs.google.com/spreadsheets/d/1tDeGWOU8EyLa7rgxCcRVXAu05CcezDFlI9K0SmIPN1Y/edit?usp=sharing"
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    data = conn.read(spreadsheet=url)
+    return data
+
 @st.cache_data
 def load_map_data():
-    with open('peta_desa.json') as f:
-        return json.load(f)
-
-@st.cache_data
-def load_csv():
     try:
-        return pd.read_csv('data_tanah.csv')
+        with open('peta_desa.json') as f:
+            return json.load(f)
     except:
-        return pd.DataFrame({
-            'id': [1], 'lat': [-7.360], 'lon': [109.902],
-            'n': [45.0], 'p': [30.0], 'k': [55.0], 'ph': [6.2], 
-            'ec': [400], 'temp': [27.0], 'moist': [35.0]
-        })
+        return None
 
 def ambil_info_lokasi(lat, lon, geo_data):
+    if not geo_data: return "Unknown", "-"
     p = Point(lon, lat)
     for feat in geo_data['features']:
         if shape(feat['geometry']).contains(p):
@@ -94,13 +96,17 @@ def ambil_info_lokasi(lat, lon, geo_data):
     return "Luar Wilayah", "-"
 
 # --- PROSES DATA UTAMA ---
-df = load_csv()
-geo_desa = load_map_data()
+try:
+    df = load_data_from_sheets()
+    geo_desa = load_map_data()
+except Exception as e:
+    st.error(f"Koneksi Gagal: Pastikan Google Sheet disetel 'Anyone with the link can view'")
+    st.stop()
 
-# 4. SIDEBAR: REFERENSI & INFO SISTEM
+# 4. SIDEBAR
 with st.sidebar:
     st.markdown("<h2 style='color:white; margin-bottom:0;'>WILDANTECH</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#8b949e; font-size:12px;'>Platform Intelijen Tanah</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#8b949e; font-size:12px;'>Intelijen Tanah & Pranoto Mongso</p>", unsafe_allow_html=True)
     st.markdown("---")
     st.markdown("### Standar Ideal Cabai")
     st.markdown("""
@@ -111,19 +117,23 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     st.markdown("---")
-    st.caption("Lokasi Deployment: Wonosobo")
+    st.info("Sistem ini siap diintegrasikan dengan kalender Pranoto Mongso untuk optimasi masa tanam.")
 
-# 5. HEADER & RINGKASAN METRIK
+# 5. HEADER & METRIK
 st.markdown("<h1 style='margin-bottom:0;'>Dashboard Pertanian Presisi Cabai</h1>", unsafe_allow_html=True)
-st.markdown("<p style='color:#8b949e;'>Monitoring Nutrisi Makro dan Mikro Tanah Real-Time</p>", unsafe_allow_html=True)
+st.markdown("<p style='color:#8b949e;'>Data Real-Time dari Google Sheets (Cloud Integrated)</p>", unsafe_allow_html=True)
 
-# Memilih data yang akan ditampilkan (klik atau terbaru)
+# Memilih data tampil (klik atau baris terakhir)
 d = st.session_state.clicked_data if st.session_state.clicked_data is not None else df.iloc[-1]
+
+# Info Tanggal
+if 'tanggal' in d:
+    st.write(f"🕒 **Waktu Pengambilan Data:** {d['tanggal']}")
 
 cols = st.columns(7)
 m_items = [
     ("Nitrogen", 'n', 'mg/kg'), ("Fosfor", 'p', 'mg/kg'), ("Kalium", 'k', 'mg/kg'),
-    ("Tingkat pH", 'ph', ''), ("Kelembaban", 'moist', '%'), ("Suhu", 'temp', '°C'), ("Salinitas (EC)", 'ec', '')
+    ("Tingkat pH", 'ph', ''), ("Kelembaban", 'moist', '%'), ("Suhu", 'temp', '°C'), ("Salinitas", 'ec', '')
 ]
 
 for i, (label, key, unit) in enumerate(m_items):
@@ -137,7 +147,6 @@ col_kiri, col_kanan = st.columns([2.5, 1])
 with col_kiri:
     st.markdown("<h3 style='font-size:18px; color:white;'>Pemetaan Geospasial Lahan</h3>", unsafe_allow_html=True)
     
-    # Inisialisasi Peta
     m = folium.Map(
         location=[d['lat'], d['lon']], 
         zoom_start=14, 
@@ -145,40 +154,32 @@ with col_kiri:
         prefer_canvas=True
     )
 
-    # Layer Batas Desa (Warna Hijau Sesuai Request)
-    folium.GeoJson(
-        geo_desa, 
-        smooth_factor=2.0,
-        style_function=lambda x: {
-            'fillColor': '#238636', 
-            'color': '#4caf50', 
-            'weight': 1.5, 
-            'fillOpacity': 0.1
-        }
-    ).add_to(m)
+    if geo_desa:
+        folium.GeoJson(
+            geo_desa, 
+            smooth_factor=2.0,
+            style_function=lambda x: {
+                'fillColor': '#238636', 
+                'color': '#4caf50', 
+                'weight': 1.5, 
+                'fillOpacity': 0.1
+            }
+        ).add_to(m)
 
-    # Render Titik Sensor (Gunakan itertuples agar ringan di RAM 8GB)
     for row in df.itertuples():
-        kondisi_oke = row.n >= N_OPTIMAL and PH_MIN <= row.ph <= PH_MAX
-        warna_titik = "#238636" if kondisi_oke else "#da3633"
+        # Logika warna titik
+        is_opt = row.n >= N_OPTIMAL and PH_MIN <= row.ph <= PH_MAX
         
         folium.CircleMarker(
             location=[row.lat, row.lon],
             radius=14,
-            color=warna_titik,
+            color="#238636" if is_opt else "#da3633",
             fill=True,
             fill_opacity=0.4,
             popup=f"ID Titik: {int(row.id)}",
         ).add_to(m)
 
-    # Menangkap Interaksi Peta
-    m_out = st_folium(
-        m, 
-        width="100%", 
-        height=520, 
-        key="map_engine",
-        returned_objects=["last_object_clicked_popup"]
-    )
+    m_out = st_folium(m, width="100%", height=520, key="map_engine", returned_objects=["last_object_clicked_popup"])
 
     # Logika Klik
     if m_out['last_object_clicked_popup']:
@@ -197,7 +198,7 @@ with col_kanan:
         
         st.markdown(f"""
         <div class="info-card">
-            <p style='color:#8b949e; font-size:12px; margin-bottom:4px;'>ID LOKASI #{int(sel['id'])}</p>
+            <p style='color:#8b949e; font-size:12px; margin-bottom:4px;'>LOKASI ID #{int(sel['id'])}</p>
             <h2 style='color:white; margin:0;'>Desa {ds}</h2>
             <p style='color:#8b949e; font-size:14px;'>Kecamatan {kc}</p>
             <hr>
@@ -206,20 +207,19 @@ with col_kanan:
         </div>
         """, unsafe_allow_html=True)
         
-        # Rekomendasi Berbasis Data
         st.markdown("<br>", unsafe_allow_html=True)
         if sel['ph'] < PH_MIN:
-            st.warning(f"Anomali pH: Nilai {sel['ph']} terlalu asam. Disarankan aplikasi Kapur Dolomit.")
+            st.warning(f"pH Tanah ({sel['ph']}) terlalu asam. Tambahkan Kapur Dolomit.")
         if sel['n'] < N_OPTIMAL:
-            st.error(f"Defisit Unsur N: Butuh intervensi pupuk Urea/ZA sebesar {round(N_OPTIMAL - sel['n'], 2)} mg/kg.")
+            st.error(f"Defisit Nitrogen: Butuh intervensi pupuk Urea/ZA.")
             
         if st.button("Reset Fokus"):
             st.session_state.clicked_data = None
             st.rerun()
     else:
-        st.info("Klik titik pada peta untuk melihat data teknis dan rekomendasi spesifik.")
-        st.markdown("### Data Terbaru")
-        st.dataframe(df[['id', 'n', 'ph', 'moist']].tail(4), use_container_width=True)
+        st.info("Klik titik pada peta untuk melihat data spesifik.")
+        st.markdown("### Histori Terbaru")
+        st.dataframe(df[['id', 'tanggal', 'n', 'ph']].tail(5), use_container_width=True)
 
 # 7. FOOTER
 st.markdown("<br><hr><center style='color:#8b949e; font-size:12px;'>WILDANTECH PRECISION AGRICULTURE | WONOSOBO 2026</center>", unsafe_allow_html=True)
