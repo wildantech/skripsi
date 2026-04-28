@@ -13,14 +13,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CSS: DESAIN DARK MODE (TANPA EMOJI) ---
+# --- CSS: DESAIN DARK MODE ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
     .stApp { background-color: #0b0e11; color: #e1e4e8; }
     h1, h2, h3, p, span, div { font-family: 'Inter', sans-serif !important; }
     header {visibility: hidden;}
-    button[kind="headerNoPadding"] { display: none; }
     [data-testid="stSidebar"] { background-color: #111418; border-right: 1px solid #1f2428; }
     div[data-testid="stMetricContainer"] {
         background: linear-gradient(145deg, #161b22, #0d1117);
@@ -35,23 +34,26 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. KONSTANTA ACUAN
+# 2. KONSTANTA
 N_OPTIMAL = 80.0
 PH_MIN = 5.5
 PH_MAX = 6.8
 
-# 3. FUNGSI DATA
+# 3. FUNGSI LOAD DATA
 @st.cache_data(ttl=60)
 def load_gsheets_data():
     url = "https://docs.google.com/spreadsheets/d/1tDeGWOU8EyLa7rgxCcRVXAu05CcezDFlI9K0SmIPN1Y/edit?usp=sharing"
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
         df_raw = conn.read(spreadsheet=url)
-        # Konversi kolom ke angka secara paksa
+        df_raw.columns = df_raw.columns.str.strip()
+        
         cols = ['lat', 'lon', 'n', 'p', 'k', 'ph', 'ec', 'temp', 'moist']
         for col in cols:
             if col in df_raw.columns:
-                df_raw[col] = pd.to_numeric(df_raw[col], errors='coerce')
+                # Menangani format teks, koma, dan spasi dari Google Sheets
+                df_raw[col] = pd.to_numeric(df_raw[col].astype(str).str.replace(',', '.'), errors='coerce')
+        
         return df_raw.dropna(subset=['lat', 'lon']).reset_index(drop=True)
     except:
         return pd.DataFrame()
@@ -70,37 +72,45 @@ def ambil_info_lokasi(lat, lon, geo_data):
         p = Point(lon, lat)
         for feat in geo_data['features']:
             if shape(feat['geometry']).contains(p):
-                return feat['properties'].get('ds', 'Tidak Diketahui'), feat['properties'].get('kec', '-')
+                # Pastikan key 'ds' dan 'kec' sesuai dengan isi file peta_desa.json Mas
+                nama_desa = feat['properties'].get('ds', 'Tidak Diketahui')
+                nama_kec = feat['properties'].get('kec', '-')
+                return nama_desa, nama_kec
     except: pass
     return "Luar Wilayah", "-"
 
-# --- PROSES DATA ---
+# --- EKSEKUSI DATA ---
 df = load_gsheets_data()
 geo_desa = load_map_json()
 
 if df.empty:
-    st.error("Gagal memuat data dari Google Sheets atau data kosong.")
+    st.error("Data tidak ditemukan atau koneksi Google Sheets terputus.")
     st.stop()
 
+# Inisialisasi State Klik
 if 'clicked_id' not in st.session_state:
     st.session_state.clicked_id = df.iloc[-1]['id']
 
-# Data yang dipilih untuk ditampilkan di metrik
-selected_row = df[df['id'] == st.session_state.clicked_id].iloc[0]
+# Ambil data terpilih
+try:
+    selected_row = df[df['id'] == st.session_state.clicked_id].iloc[0]
+except:
+    selected_row = df.iloc[-1]
+    st.session_state.clicked_id = selected_row['id']
 
 # 4. SIDEBAR
 with st.sidebar:
-    st.markdown("<h2 style='color:white; margin-bottom:0;'>WILDANTECH</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#8b949e; font-size:12px;'>Platform Intelijen Tanah</p>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color:white;'>WILDANTECH</h2>", unsafe_allow_html=True)
     st.markdown("---")
-    st.markdown("### Standar Ideal Cabai")
-    st.markdown("<div style='font-size:14px; color:#c9d1d9;'>• Nitrogen: > 80 mg/kg<br>• pH Tanah: 5.5 - 6.8</div>", unsafe_allow_html=True)
+    st.markdown("### Standar Nutrisi")
+    st.markdown("Nitrogen: > 80 mg/kg")
+    st.markdown("pH Tanah: 5.5 - 6.8")
     st.markdown("---")
     st.caption("Lokasi: Wonosobo")
 
 # 5. HEADER & METRIK
-st.markdown("<h1 style='margin-bottom:0;'>Dashboard Pertanian Presisi Cabai</h1>", unsafe_allow_html=True)
-st.markdown("<p style='color:#8b949e;'>Monitoring Nutrisi Tanah Berbasis Google Sheets Cloud</p>", unsafe_allow_html=True)
+st.markdown("<h1>Dashboard Pertanian Presisi</h1>", unsafe_allow_html=True)
+st.markdown("<p style='color:#8b949e;'>Monitoring Real-time Nutrisi Tanah Cabai</p>", unsafe_allow_html=True)
 
 m_cols = st.columns(7)
 m_items = [("Nitrogen", 'n', ' mg/kg'), ("Fosfor", 'p', ' mg/kg'), ("Kalium", 'k', ' mg/kg'),
@@ -116,9 +126,10 @@ st.markdown("---")
 col_kiri, col_kanan = st.columns([2.5, 1])
 
 with col_kiri:
-    st.markdown("<h3 style='font-size:18px; color:white;'>Pemetaan Geospasial Lahan</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color:white;'>Pemetaan Geospasial</h3>", unsafe_allow_html=True)
     
-    m = folium.Map(location=[selected_row['lat'], selected_row['lon']], zoom_start=13, tiles="CartoDB dark_matter")
+    # Peta Folium
+    m = folium.Map(location=[selected_row['lat'], selected_row['lon']], zoom_start=14, tiles="CartoDB dark_matter")
 
     if geo_desa:
         folium.GeoJson(
@@ -126,7 +137,7 @@ with col_kiri:
             style_function=lambda x: {'fillColor': '#238636', 'color': '#4caf50', 'weight': 1.5, 'fillOpacity': 0.1}
         ).add_to(m)
 
-    # Render Semua Titik
+    # Render Semua Titik dari Tabel
     for row in df.itertuples():
         is_opt = row.n >= N_OPTIMAL and PH_MIN <= row.ph <= PH_MAX
         folium.CircleMarker(
@@ -134,13 +145,14 @@ with col_kiri:
             radius=12,
             color="#238636" if is_opt else "#da3633",
             fill=True,
-            fill_opacity=0.6,
-            popup=f"ID:{int(row.id)}",
+            fill_opacity=0.8,
+            popup=f"ID:{int(row.id)}"
         ).add_to(m)
 
-    m_out = st_folium(m, width="100%", height=520, key="map_engine")
+    # Render Peta dengan Key Dinamis
+    m_out = st_folium(m, width="100%", height=520, key=f"map_{st.session_state.clicked_id}")
 
-    # Logika Klik
+    # Logika Interaksi Klik
     if m_out and m_out.get("last_object_clicked_popup"):
         try:
             new_id = int(m_out["last_object_clicked_popup"].split(":")[1])
@@ -150,12 +162,12 @@ with col_kiri:
         except: pass
 
 with col_kanan:
-    st.markdown("<h3 style='font-size:18px; color:white;'>Analisis Teknis</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color:white;'>Analisis Teknis</h3>", unsafe_allow_html=True)
     ds, kc = ambil_info_lokasi(selected_row['lat'], selected_row['lon'], geo_desa)
     
     st.markdown(f"""
     <div class="info-card">
-        <p style='color:#8b949e; font-size:12px; margin-bottom:4px;'>LOKASI ID #{int(selected_row['id'])}</p>
+        <p style='color:#8b949e; font-size:11px; margin-bottom:4px;'>LOKASI AKTIF</p>
         <h2 style='color:white; margin:0;'>Desa {ds}</h2>
         <p style='color:#8b949e; font-size:14px;'>Kecamatan {kc}</p>
         <hr>
@@ -165,12 +177,12 @@ with col_kanan:
     
     st.markdown("<br>", unsafe_allow_html=True)
     if selected_row['ph'] < PH_MIN:
-        st.warning(f"pH Tanah rendah ({selected_row['ph']}). Aplikasi Kapur Dolomit diperlukan.")
+        st.warning(f"Tingkat pH Tanah rendah ({selected_row['ph']}). Diperlukan pengapuran lahan.")
     if selected_row['n'] < N_OPTIMAL:
-        st.error(f"Defisit Nitrogen. Diperlukan aplikasi pupuk N tambahan.")
+        st.error(f"Kadar Nitrogen rendah. Segera lakukan pemupukan urea atau organik.")
         
-    if st.button("Tampilkan Data Terbaru"):
-        st.session_state.clicked_id = df.iloc[-1]['id']
+    if st.button("Segarkan Data"):
+        st.cache_data.clear()
         st.rerun()
 
-st.markdown("<br><hr><center style='color:#8b949e; font-size:12px;'>WILDANTECH PRECISION AGRICULTURE | WONOSOBO 2026</center>", unsafe_allow_html=True)
+st.markdown("<br><hr><center style='color:#8b949e; font-size:12px;'>WILDANTECH PRECISION AGRICULTURE | 2026</center>", unsafe_allow_html=True)
