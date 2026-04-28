@@ -95,12 +95,30 @@ def ambil_info_lokasi(lat, lon, geo_data):
             return feat['properties'].get('ds', 'Tidak Diketahui'), feat['properties'].get('kec', '-')
     return "Luar Wilayah", "-"
 
-# --- PROSES DATA UTAMA ---
+# --- PROSES DATA UTAMA (VERSI ANTI-ERROR) ---
 try:
-    df = load_data_from_sheets()
+    # 1. Ambil data mentah dari Sheets
+    df_raw = load_data_from_sheets()
+    
+    # 2. Paksa konversi kolom-kolom penting ke angka
+    # Jika ada teks nyasar, akan diubah jadi NaN (kosong) agar tidak bikin crash
+    cols_to_fix = ['lat', 'lon', 'n', 'p', 'k', 'ph', 'ec', 'temp', 'moist']
+    for col in cols_to_fix:
+        df_raw[col] = pd.to_numeric(df_raw[col], errors='coerce')
+    
+    # 3. Bersihkan baris yang koordinatnya kosong/rusak
+    df = df_raw.dropna(subset=['lat', 'lon']).copy()
+    
+    # 4. Load data peta desa
     geo_desa = load_map_data()
+    
+    # 5. Cek apakah setelah dibersihkan masih ada datanya
+    if df.empty:
+        st.warning(" Data di Google Sheets belum valid. Pastikan lat/lon menggunakan titik (bukan koma).")
+        st.stop()
+        
 except Exception as e:
-    st.error(f"Koneksi Gagal: Pastikan Google Sheet disetel 'Anyone with the link can view'")
+    st.error(f" Gagal memproses data: {e}")
     st.stop()
 
 # 4. SIDEBAR
