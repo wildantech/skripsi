@@ -13,29 +13,56 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CSS: DESAIN PROFESIONAL DARK MODE ---
+# --- CSS: DESAIN PROFESIONAL HIJAU & DARK MODE ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+    
+    /* Global Styles */
     .stApp { background-color: #0b0e11; color: #e1e4e8; }
     h1, h2, h3, p, span, div { font-family: 'Inter', sans-serif !important; }
+
+    /* Menghilangkan Header Default & Bug Arrow */
     header {visibility: hidden;}
     button[kind="headerNoPadding"] { display: none; }
-    [data-testid="stSidebar"] { background-color: #111418; border-right: 1px solid #1f2428; }
+    
+    /* Sidebar Styling */
+    [data-testid="stSidebar"] {
+        background-color: #111418;
+        border-right: 1px solid #1f2428;
+    }
+
+    /* Metric Card Custom (Aksen Hijau) */
     div[data-testid="stMetricContainer"] {
         background: linear-gradient(145deg, #161b22, #0d1117);
         border: 1px solid #238636;
         border-radius: 12px;
         padding: 20px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
     }
     div[data-testid="stMetricValue"] { color: #4caf50 !important; font-weight: 700; }
-    .info-card { background: #0d1117; border: 1px solid #30363d; border-radius: 12px; padding: 24px; }
-    .status-badge { padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    div[data-testid="stMetricLabel"] { color: #8b949e !important; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+
+    /* Card Analisis di Panel Kanan */
+    .info-card {
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 12px;
+        padding: 24px;
+    }
+    .status-badge {
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    
     hr { border: 0; border-top: 1px solid #30363d; margin: 25px 0; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. KONSTANTA
+# 2. KONSTANTA ACUAN (STANDAR CABAI)
 N_OPTIMAL = 80.0
 PH_MIN = 5.5
 PH_MAX = 6.8
@@ -43,141 +70,166 @@ PH_MAX = 6.8
 if 'clicked_data' not in st.session_state:
     st.session_state.clicked_data = None
 
-# 3. FUNGSI LOAD DATA
-@st.cache_data(ttl=60)
-def load_data_from_sheets():
-    url = "https://docs.google.com/spreadsheets/d/1tDeGWOU8EyLa7rgxCcRVXAu05CcezDFlI9K0SmIPN1Y/edit?usp=sharing"
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    return conn.read(spreadsheet=url)
-
+# 3. FUNGSI DATA (DENGAN CACHE)
 @st.cache_data
 def load_map_data():
     try:
         with open('peta_desa.json') as f:
             return json.load(f)
-    except Exception as e:
+    except:
         return None
 
+@st.cache_data(ttl=60)
+def load_gsheets_data():
+    url = "https://docs.google.com/spreadsheets/d/1tDeGWOU8EyLa7rgxCcRVXAu05CcezDFlI9K0SmIPN1Y/edit?usp=sharing"
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    df_raw = conn.read(spreadsheet=url)
+    
+    # Pre-processing agar tidak error saat dibaca folium
+    cols_to_fix = ['lat', 'lon', 'n', 'p', 'k', 'ph', 'ec', 'temp', 'moist']
+    for col in cols_to_fix:
+        if col in df_raw.columns:
+            df_raw[col] = pd.to_numeric(df_raw[col], errors='coerce')
+    
+    # Hapus data kosong di lat/lon agar peta tidak crash
+    return df_raw.dropna(subset=['lat', 'lon']).reset_index(drop=True)
+
 def ambil_info_lokasi(lat, lon, geo_data):
-    if not geo_data: return "Unknown", "-"
-    try:
-        p = Point(lon, lat)
-        for feat in geo_data['features']:
-            if shape(feat['geometry']).contains(p):
-                return feat['properties'].get('ds', 'Tidak Diketahui'), feat['properties'].get('kec', '-')
-    except: pass
+    if geo_data is None: return "Unknown", "-"
+    p = Point(lon, lat)
+    for feat in geo_data['features']:
+        if shape(feat['geometry']).contains(p):
+            return feat['properties'].get('ds', 'Tidak Diketahui'), feat['properties'].get('kec', '-')
     return "Luar Wilayah", "-"
 
-# --- 4. PROSES DATA UTAMA ---
-try:
-    df_raw = load_data_from_sheets()
-    
-    # Konversi paksa ke angka untuk kolom vital
-    cols_numeric = ['lat', 'lon', 'n', 'p', 'k', 'ph', 'ec', 'temp', 'moist']
-    for col in cols_numeric:
-        df_raw[col] = pd.to_numeric(df_raw[col], errors='coerce')
-    
-    # Bersihkan data (hapus yang lat/lon nya kosong)
-    df = df_raw.dropna(subset=['lat', 'lon']).reset_index(drop=True)
-    
-    # Load GeoJSON
-    geo_desa = load_map_data()
-    
-    if df.empty:
-        st.error("Data di Google Sheets kosong atau format koordinat salah (gunakan titik).")
-        st.stop()
-except Exception as e:
-    st.error(f"Gagal memuat data: {e}")
-    st.stop()
+# --- PROSES DATA UTAMA ---
+df = load_gsheets_data()
+geo_desa = load_map_data()
 
-# Tentukan data yang aktif ditampilkan di metrik (klik atau baris terakhir)
-d = st.session_state.clicked_data if st.session_state.clicked_data is not None else df.iloc[-1]
-
-# 5. SIDEBAR
+# 4. SIDEBAR: REFERENSI & INFO SISTEM
 with st.sidebar:
     st.markdown("<h2 style='color:white; margin-bottom:0;'>WILDANTECH</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#8b949e; font-size:12px;'>Intelijen Tanah & Pranoto Mongso</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#8b949e; font-size:12px;'>Platform Intelijen Tanah</p>", unsafe_allow_html=True)
     st.markdown("---")
     st.markdown("### Standar Ideal Cabai")
-    st.markdown("<div style='font-size:14px; color:#c9d1d9;'>• Nitrogen: > 80 mg/kg<br>• pH Tanah: 5.5 - 6.8</div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style='font-size:14px; color:#c9d1d9;'>
+    • Nitrogen: > 80 mg/kg<br>
+    • pH Tanah: 5.5 - 6.8<br>
+    • Kelembaban: 60 - 80%
+    </div>
+    """, unsafe_allow_html=True)
     st.markdown("---")
-    st.info("Data diperbarui otomatis dari Google Sheets.")
+    st.caption("Lokasi Deployment: Wonosobo")
 
-# 6. HEADER & METRIK
+# 5. HEADER & RINGKASAN METRIK
 st.markdown("<h1 style='margin-bottom:0;'>Dashboard Pertanian Presisi Cabai</h1>", unsafe_allow_html=True)
-if 'tanggal' in d:
-    st.markdown(f"<p style='color:#4caf50;'>📅 Data Terkini: {d['tanggal']}</p>", unsafe_allow_html=True)
+st.markdown("<p style='color:#8b949e;'>Monitoring Nutrisi Makro dan Mikro Tanah Real-Time (Cloud Sheets)</p>", unsafe_allow_html=True)
+
+# Memilih data yang akan ditampilkan (klik atau terbaru)
+if df.empty:
+    st.error("Data di Google Sheets kosong atau tidak terbaca.")
+    st.stop()
+
+d = st.session_state.clicked_data if st.session_state.clicked_data is not None else df.iloc[-1]
 
 cols = st.columns(7)
 m_items = [
-    ("Nitrogen", 'n', ' mg/kg'), ("Fosfor", 'p', ' mg/kg'), ("Kalium", 'k', ' mg/kg'),
-    ("pH Tanah", 'ph', ''), ("Lembap", 'moist', '%'), ("Suhu", 'temp', '°C'), ("EC", 'ec', '')
+    ("Nitrogen", 'n', 'mg/kg'), ("Fosfor", 'p', 'mg/kg'), ("Kalium", 'k', 'mg/kg'),
+    ("Tingkat pH", 'ph', ''), ("Kelembaban", 'moist', '%'), ("Suhu", 'temp', '°C'), ("Salinitas (EC)", 'ec', '')
 ]
 
 for i, (label, key, unit) in enumerate(m_items):
-    cols[i].metric(label, f"{round(d[key], 1)}{unit}")
+    val = round(d[key], 1) if not pd.isna(d[key]) else 0
+    cols[i].metric(label, f"{val}{unit}")
 
 st.markdown("---")
 
-# 7. PETA & ANALISIS
+# 6. KONTEN UTAMA (PETA & ANALISIS)
 col_kiri, col_kanan = st.columns([2.5, 1])
 
 with col_kiri:
     st.markdown("<h3 style='font-size:18px; color:white;'>Pemetaan Geospasial Lahan</h3>", unsafe_allow_html=True)
     
     # Inisialisasi Peta
-    m = folium.Map(location=[d['lat'], d['lon']], zoom_start=12, tiles="CartoDB dark_matter")
+    m = folium.Map(
+        location=[d['lat'], d['lon']], 
+        zoom_start=13, 
+        tiles="CartoDB dark_matter",
+        prefer_canvas=True
+    )
 
-    # Render Batas Desa (Garis Hijau)
-    if geo_desa:
+    # Layer Batas Desa
+    if geo_desa is not None:
         folium.GeoJson(
             geo_desa, 
-            style_function=lambda x: {'fillColor': '#238636', 'color': '#4caf50', 'weight': 2, 'fillOpacity': 0.1}
+            smooth_factor=2.0,
+            style_function=lambda x: {
+                'fillColor': '#238636', 
+                'color': '#4caf50', 
+                'weight': 1.5, 
+                'fillOpacity': 0.1
+            }
         ).add_to(m)
 
-    # Render SEMUA TITIK dari Google Sheets
-    for i in range(len(df)):
-        row = df.iloc[i]
-        is_opt = row['n'] >= N_OPTIMAL and PH_MIN <= row['ph'] <= PH_MAX
+    # Render SEMUA Titik Sensor (itertuples)
+    for row in df.itertuples():
+        kondisi_oke = row.n >= N_OPTIMAL and PH_MIN <= row.ph <= PH_MAX
+        warna_titik = "#238636" if kondisi_oke else "#da3633"
+        
         folium.CircleMarker(
-            location=[row['lat'], row['lon']],
-            radius=10,
-            color="#238636" if is_opt else "#da3633",
+            location=[row.lat, row.lon],
+            radius=12,
+            color=warna_titik,
             fill=True,
-            fill_opacity=0.7,
-            popup=f"ID:{int(row['id'])}",
+            fill_opacity=0.6,
+            popup=f"ID Titik: {int(row.id)}",
         ).add_to(m)
 
-    # Tangkap interaksi klik
-    m_out = st_folium(m, width="100%", height=500, key="map_utama", returned_objects=["last_object_clicked_popup"])
+    # Menangkap Interaksi Peta
+    m_out = st_folium(
+        m, 
+        width="100%", 
+        height=520, 
+        key="map_engine",
+        returned_objects=["last_object_clicked_popup"]
+    )
 
+    # Logika Klik
     if m_out and m_out.get('last_object_clicked_popup'):
         try:
-            tid = int(m_out['last_object_clicked_popup'].split(":")[1])
-            st.session_state.clicked_data = df[df['id'] == tid].iloc[0]
+            target_id = int(m_out['last_object_clicked_popup'].split(": ")[1])
+            st.session_state.clicked_data = df[df['id'] == target_id].iloc[0]
             st.rerun()
         except: pass
 
 with col_kanan:
     st.markdown("<h3 style='font-size:18px; color:white;'>Analisis Teknis</h3>", unsafe_allow_html=True)
-    ds, kc = ambil_info_lokasi(d['lat'], d['lon'], geo_desa)
+    
+    sel = st.session_state.clicked_data if st.session_state.clicked_data is not None else df.iloc[-1]
+    ds, kc = ambil_info_lokasi(sel['lat'], sel['lon'], geo_desa)
     
     st.markdown(f"""
     <div class="info-card">
-        <p style='color:#8b949e; font-size:12px;'>LOKASI ID #{int(d['id'])}</p>
+        <p style='color:#8b949e; font-size:12px; margin-bottom:4px;'>ID LOKASI #{int(sel['id'])}</p>
         <h2 style='color:white; margin:0;'>Desa {ds}</h2>
         <p style='color:#8b949e; font-size:14px;'>Kecamatan {kc}</p>
         <hr>
-        {"<span class='status-badge' style='background:#238636;'>Kondisi Optimal</span>" if d['n'] >= N_OPTIMAL else "<span class='status-badge' style='background:#da3633;'>Perlu Perbaikan</span>"}
+        <p style='font-size:14px;'>Status Lahan:</p>
+        {"<span class='status-badge' style='background:#238636; color:#ffffff;'>Kondisi Optimal</span>" if sel['n'] >= N_OPTIMAL else "<span class='status-badge' style='background:#da3633; color:#ffffff;'>Perlu Perbaikan</span>"}
     </div>
     """, unsafe_allow_html=True)
     
+    # Rekomendasi Berbasis Data
     st.markdown("<br>", unsafe_allow_html=True)
-    if d['ph'] < PH_MIN: st.warning(f"pH Tanah ({d['ph']}) terlalu asam.")
-    if d['n'] < N_OPTIMAL: st.error(f"Defisit Nitrogen! Butuh pupuk tambahan.")
-    
-    if st.button("Reset ke Data Terbaru"):
+    if sel['ph'] < PH_MIN:
+        st.warning(f"Anomali pH: Nilai {sel['ph']} terlalu asam. Disarankan Kapur Dolomit.")
+    if sel['n'] < N_OPTIMAL:
+        st.error(f"Defisit Unsur N: Butuh pupuk tambahan sebesar {round(N_OPTIMAL - sel['n'], 2)} mg/kg.")
+        
+    if st.button("Reset Fokus"):
         st.session_state.clicked_data = None
         st.rerun()
 
-st.markdown("<br><hr><center style='color:#8b949e; font-size:12px;'>WILDANTECH PRECISION AGRICULTURE | 2026</center>", unsafe_allow_html=True)
+# 7. FOOTER
+st.markdown("<br><hr><center style='color:#8b949e; font-size:12px;'>WILDANTECH PRECISION AGRICULTURE | WONOSOBO 2026</center>", unsafe_allow_html=True)
