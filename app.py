@@ -57,7 +57,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. LOAD DATA
+# 2. FUNGSI LOAD DATA
 @st.cache_data(ttl=60)
 def get_data():
     url = "https://docs.google.com/spreadsheets/d/1tDeGWOU8EyLa7rgxCcRVXAu05CcezDFlI9K0SmIPN1Y/edit?usp=sharing"
@@ -65,6 +65,7 @@ def get_data():
         conn = st.connection("gsheets", type=GSheetsConnection)
         df = conn.read(spreadsheet=url)
         df.columns = df.columns.str.strip().str.lower()
+        # Variabel yang dibutuhkan
         cols = ['lat', 'lon', 'n', 'p', 'k', 'ph', 'ec', 'temp', 'moist']
         for c in cols:
             if c in df.columns:
@@ -76,10 +77,12 @@ def get_data():
 @st.cache_data
 def get_geojson():
     try:
-        with open('peta_desa.json', 'r') as f: return json.load(f)
-    except: return None
+        with open('peta_desa.json', 'r') as f:
+            return json.load(f)
+    except:
+        return None
 
-# 3. LOGIKA STATE
+# 3. LOGIKA STATE DAN DATA
 if 'selected_id' not in st.session_state:
     st.session_state.selected_id = None
 
@@ -102,41 +105,67 @@ with st.sidebar:
         st.rerun()
 
 # --- VISUALISASI PETA ---
-center_lat = df['lat'].mean() if not df.empty else -7.35
-center_lon = df['lon'].mean() if not df.empty else 109.9
+# Menentukan titik tengah peta
+if not df.empty:
+    center_lat, center_lon = df['lat'].mean(), df['lon'].mean()
+else:
+    center_lat, center_lon = -7.35, 109.9
 
 m = folium.Map(location=[center_lat, center_lon], zoom_start=13, tiles="CartoDB dark_matter", zoom_control=False)
 
 if geo_desa:
-    folium.GeoJson(geo_desa, style_function=lambda x: {'fillColor': '#238636', 'color': '#deff9a', 'weight': 1, 'fillOpacity': 0.1}).add_to(m)
+    folium.GeoJson(
+        geo_desa, 
+        style_function=lambda x: {
+            'fillColor': '#238636', 
+            'color': '#deff9a', 
+            'weight': 1, 
+            'fillOpacity': 0.1
+        }
+    ).add_to(m)
 
 for row in df.itertuples():
-    color = "#deff9a" if (5.5 <= row.ph <= 7.0 and row.n >= 80) else "#ff4b4b"
+    # Penentuan warna berdasarkan kondisi Nitrogen dan pH
+    dot_color = "#deff9a" if (5.5 <= row.ph <= 7.0 and row.n >= 80) else "#ff4b4b"
     folium.CircleMarker(
-        location=[row.lat, row.lon], radius=12, color=color, fill=True, fill_opacity=0.8,
+        location=[row.lat, row.lon],
+        radius=12,
+        color=dot_color,
+        fill=True,
+        fill_opacity=0.8,
         popup=f"ID:{int(row.id)}"
     ).add_to(m)
 
+# Tampilkan Peta
 out = st_folium(m, width="100%", height=850, returned_objects=["last_object_clicked_popup"])
 
+# Deteksi Klik pada Titik
 if out and out.get("last_object_clicked_popup"):
-    new_id = int(out["last_object_clicked_popup"].split(":")[1])
-    if st.session_state.selected_id != new_id:
-        st.session_state.selected_id = new_id
-        st.rerun()
+    try:
+        new_id = int(out["last_object_clicked_popup"].split(":")[1])
+        if st.session_state.selected_id != new_id:
+            st.session_state.selected_id = new_id
+            st.rerun()
+    except:
+        pass
 
-# --- SISTEM PENDUKUNG KEPUTUSAN ---
+# --- TAMPILAN INFORMASI DAN SISTEM PENDUKUNG KEPUTUSAN ---
 if st.session_state.selected_id:
+    # Ambil data baris yang dipilih
     s = df[df['id'] == st.session_state.selected_id].iloc[0]
     ds, kc = get_village_info(s['lat'], s['lon'], geo_desa)
     
-    st.markdown(f"""
-        <div class="floating-card">
-            <small style="color:#deff9a; letter-spacing:1px; font-weight:bold;">WILDANTECH ANALYTICS</small>
-            <h2 style="margin:0; font-size:24px;">Desa {ds}</h2>
+    # Render Kartu Melayang menggunakan HTML Baku
+    # Saya memecah string HTML agar variabel terisi dengan benar (menghindari error koding muncul di layar)
+    card_html = f"""
+    <div class="floating-card">
+        <div style="margin-bottom: 10px;">
+            <span style="color:#deff9a; font-size:10px; font-weight:bold; letter-spacing:1px;">WILDANTECH ANALYTICS</span>
+            <h2 style="margin:2px 0 0 0; font-size:22px; color:white;">Desa {ds}</h2>
             <p style="margin:0; opacity:0.6; font-size:12px;">Kecamatan {kc} | ID: {int(s['id'])}</p>
-            <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:12px 0;">
-            
+        </div>
+        
+        <div style="border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
             <div class="grid-metrics">
                 <div class="metric-small"><small>Nitrogen (N)</small><br><b>{s['n']} mg/kg</b></div>
                 <div class="metric-small"><small>Phosphor (P)</small><br><b>{s['p']} mg/kg</b></div>
@@ -144,27 +173,31 @@ if st.session_state.selected_id:
                 <div class="metric-small"><small>Tingkat pH</small><br><b>{s['ph']}</b></div>
                 <div class="metric-small"><small>Suhu Tanah</small><br><b>{s['temp']}°C</b></div>
                 <div class="metric-small"><small>Kelembapan</small><br><b>{s['moist']}%</b></div>
-                <div class="metric-small" style="grid-column: span 2;"><small>EC (Electrical Conductivity)</small><br><b>{s['ec']} us/cm</b></div>
+                <div class="metric-small" style="grid-column: span 2;"><small>EC (Konduktivitas Listrik)</small><br><b>{s['ec']} us/cm</b></div>
             </div>
-    """, unsafe_allow_html=True)
+        </div>
+    """
+    st.markdown(card_html, unsafe_allow_html=True)
 
-    with st.expander("ANALISIS DAN REKOMENDASI"):
-        # Rekomendasi Teknis
-        if s['n'] < 80: 
-            st.error("Rekomendasi Pupuk: Segera lakukan penambahan pupuk Nitrogen (Urea/ZA).")
-        if s['p'] < 50: 
-            st.error("Rekomendasi Phospat: Lakukan pemupukan Phosphor menggunakan SP-36.")
+    # Bagian Rekomendasi (Menggunakan komponen asli Streamlit agar interaktif dan aman)
+    with st.expander("ANALISIS DAN REKOMENDASI TINDAKAN"):
+        if s['n'] < 80:
+            st.error("Rekomendasi Nutrisi: Diperlukan penambahan pupuk berbasis Nitrogen (Urea atau ZA).")
         
-        if s['ph'] < 5.5: 
-            st.warning("Kondisi Tanah: Asam. Disarankan pemberian Kapur Dolomit.")
-        elif s['ph'] > 7.5: 
-            st.warning("Kondisi Tanah: Basa. Disarankan pemberian Belerang atau Asam Fosfat.")
-        else: 
-            st.success("Kondisi pH Tanah: Optimal untuk pertumbuhan tanaman.")
+        if s['p'] < 50:
+            st.error("Rekomendasi Nutrisi: Diperlukan penambahan pupuk Phosphor (SP-36).")
+            
+        if s['ph'] < 5.5:
+            st.warning("Kondisi Tanah: Tingkat keasaman tinggi (Asam). Disarankan pemberian Kapur Dolomit.")
+        elif s['ph'] > 7.5:
+            st.warning("Kondisi Tanah: Tingkat keasaman rendah (Basa). Disarankan pemberian Belerang.")
+        else:
+            st.success("Kondisi pH: Tingkat keasaman tanah berada pada rentang optimal.")
             
         st.divider()
-        st.write("**Laporan Strategis Dinas:**")
-        prioritas = "Tinggi" if (s['n'] < 50 or s['ph'] < 5.0) else "Normal"
-        st.write(f"Status Prioritas Distribusi Nutrisi: **{prioritas}**")
+        st.write("**Data Laporan Dinas:**")
+        prioritas_distribusi = "Tinggi" if (s['n'] < 50 or s['ph'] < 5.0) else "Normal"
+        st.write(f"Prioritas Alokasi Bantuan Nutrisi: **{prioritas_distribusi}**")
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    # Tutup div kartu melayang
+    st.markdown("</div>", unsafe_allow_html=True)
