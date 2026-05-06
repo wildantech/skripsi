@@ -7,14 +7,14 @@ import requests
 from shapely.geometry import shape, Point
 from streamlit_gsheets import GSheetsConnection
 
-# 1. KONFIGURASI HALAMAN UTAMA (Dioptimalkan untuk Mobile)
+# 1. KONFIGURASI HALAMAN UTAMA
 st.set_page_config(
     page_title="Wildantech | Intelligence Dashboard",
     layout="wide",
-    initial_sidebar_state="auto"
+    initial_sidebar_state="collapsed"
 )
 
-# --- CSS: MODERN & RESPONSIVE ---
+# --- CSS: DESAIN MODERN FORMAL (Sesuai Versi Mas Wildan) ---
 st.markdown("""
     <style>
     [data-testid="stAppViewContainer"] > section:nth-child(2) { padding: 0 !important; }
@@ -23,49 +23,46 @@ st.markdown("""
     
     .floating-card {
         position: fixed;
-        top: 10px;
-        right: 10px;
-        left: 10px;
-        max-width: 350px;
-        margin-left: auto;
+        top: 20px;
+        right: 20px;
+        width: 350px;
         background: rgba(13, 17, 23, 0.95);
         backdrop-filter: blur(15px);
         border: 1px solid rgba(222, 255, 154, 0.3);
-        border-radius: 12px;
-        padding: 15px;
+        border-radius: 15px;
+        padding: 20px;
         z-index: 10000;
         color: white;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
     }
     
     .grid-metrics {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 8px;
-        margin-top: 8px;
+        gap: 10px;
+        margin-top: 10px;
     }
     
     .metric-small {
         background: rgba(255,255,255,0.05);
-        padding: 6px;
-        border-radius: 6px;
+        padding: 8px;
+        border-radius: 8px;
         border-left: 3px solid #deff9a;
-        font-size: 13px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. FUNGSI TEKNIS (DATA & MDPL)
+# 2. FUNGSI TEKNIS
 def get_elevation(lat, lon):
-    """Fungsi otomatis mengambil data MDPL"""
     try:
         url = f"https://api.open-elevation.com/api/v1/lookup?locations={lat},{lon}"
-        response = requests.get(url, timeout=5)
+        response = requests.get(url, timeout=3) # Timeout lebih pendek agar tidak lag
         if response.status_code == 200:
-            return response.json()['results'][0]['elevation']
-        return "-"
+            elev = response.json()['results'][0]['elevation']
+            return f"{elev} m"
+        return "Data GPS" # Teks cadangan jika API sibuk
     except:
-        return "-"
+        return "Data GPS"
 
 @st.cache_data(ttl=60)
 def get_data():
@@ -90,7 +87,13 @@ def get_geojson():
     except:
         return None
 
-# 3. LOGIKA DESA
+# 3. LOGIKA STATE
+if 'selected_id' not in st.session_state:
+    st.session_state.selected_id = None
+
+df = get_data()
+geo_desa = get_geojson()
+
 def get_village_info(lat, lon, g_data):
     if not g_data: return "Wonosobo", "Jawa Tengah"
     p = Point(lon, lat)
@@ -99,17 +102,10 @@ def get_village_info(lat, lon, g_data):
             return feat['properties'].get('ds', 'Terdeteksi'), feat['properties'].get('kec', '-')
     return "Luar Area", "-"
 
-# 4. MANAJEMEN STATE
-if 'selected_id' not in st.session_state:
-    st.session_state.selected_id = None
-
-df = get_data()
-geo_desa = get_geojson()
-
 # --- SIDEBAR ---
 with st.sidebar:
-    st.header("Wildantech Panel")
-    if st.button("Reset Dashboard"):
+    st.title("Panel Kontrol")
+    if st.button("Reset / Bersihkan Tampilan"):
         st.session_state.selected_id = None
         st.rerun()
 
@@ -117,7 +113,7 @@ with st.sidebar:
 center_lat = df['lat'].mean() if not df.empty else -7.35
 center_lon = df['lon'].mean() if not df.empty else 109.9
 
-m = folium.Map(location=[center_lat, center_lon], zoom_start=13, tiles="CartoDB dark_matter")
+m = folium.Map(location=[center_lat, center_lon], zoom_start=13, tiles="CartoDB dark_matter", zoom_control=False)
 
 if geo_desa:
     folium.GeoJson(geo_desa, style_function=lambda x: {'fillColor': '#238636', 'color': '#deff9a', 'weight': 1, 'fillOpacity': 0.1}).add_to(m)
@@ -125,11 +121,11 @@ if geo_desa:
 for row in df.itertuples():
     status_warna = "#deff9a" if (5.5 <= row.ph <= 7.0 and row.n >= 80) else "#ff4b4b"
     folium.CircleMarker(
-        location=[row.lat, row.lon], radius=15, color=status_warna, fill=True, fill_opacity=0.8,
+        location=[row.lat, row.lon], radius=12, color=status_warna, fill=True, fill_opacity=0.8,
         popup=f"ID:{int(row.id)}"
     ).add_to(m)
 
-out = st_folium(m, use_container_width=True, height=750, returned_objects=["last_object_clicked_popup"])
+out = st_folium(m, width="100%", height=850, returned_objects=["last_object_clicked_popup"])
 
 if out and out.get("last_object_clicked_popup"):
     try:
@@ -140,35 +136,37 @@ if out and out.get("last_object_clicked_popup"):
     except:
         pass
 
-# --- KARTU INFO & MDPL ---
+# --- TAMPILAN KARTU INFORMASI (Versi Mas Wildan yang Sudah Diperbaiki) ---
 if st.session_state.selected_id:
     s = df[df['id'] == st.session_state.selected_id].iloc[0]
     ds, kc = get_village_info(s['lat'], s['lon'], geo_desa)
-    mdpl = get_elevation(s['lat'], s['lon'])
+    mdpl = get_elevation(s['lat'], s['lon']) # Ambil data MDPL
     
     st.markdown(f"""
     <div class="floating-card">
-        <div>
-            <span style="color:#deff9a; font-size:9px; font-weight:bold;">WILDANTECH ANALYTICS</span>
-            <h2 style="margin:0; font-size:18px;">Desa {ds}</h2>
-            <p style="margin:0; opacity:0.6; font-size:11px;">Kec. {kc} | {mdpl} MDPL</p>
+        <div style="margin-bottom: 10px;">
+            <span style="color:#deff9a; font-size:10px; font-weight:bold; letter-spacing:1px;">WILDANTECH MONITORING</span>
+            <h2 style="margin:2px 0 0 0; font-size:22px;">Desa {ds}</h2>
+            <p style="margin:0; opacity:0.6; font-size:12px;">Kecamatan {kc} | ID: {int(s['id'])} | <b>{mdpl}</b></p>
         </div>
-        <div style="border-top:1px solid rgba(255,255,255,0.1); margin-top:8px; padding-top:8px;">
+        <div style="border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
             <div class="grid-metrics">
-                <div class="metric-small">N: <b>{s['n']}</b></div>
-                <div class="metric-small">P: <b>{s['p']}</b></div>
-                <div class="metric-small">K: <b>{s['k']}</b></div>
-                <div class="metric-small">pH: <b>{s['ph']}</b></div>
-                <div class="metric-small">Suhu: <b>{s['temp']}°C</b></div>
-                <div class="metric-small">Lembap: <b>{s['moist']}%</b></div>
+                <div class="metric-small"><small>Nitrogen (N)</small><br><b>{s['n']} mg/kg</b></div>
+                <div class="metric-small"><small>Phosphor (P)</small><br><b>{s['p']} mg/kg</b></div>
+                <div class="metric-small"><small>Kalium (K)</small><br><b>{s['k']} mg/kg</b></div>
+                <div class="metric-small"><small>Tingkat pH</small><br><b>{s['ph']}</b></div>
+                <div class="metric-small"><small>Suhu Tanah</small><br><b>{s['temp']}°C</b></div>
+                <div class="metric-small"><small>Kelembapan</small><br><b>{s['moist']}%</b></div>
+                <div class="metric-small" style="grid-column: span 2;"><small>Konduktivitas Listrik (EC)</small><br><b>{s['ec']} us/cm</b></div>
             </div>
         </div>
     """, unsafe_allow_html=True)
 
-    with st.expander("REKOMENDASI"):
-        if s['n'] < 80: st.error("Butuh tambahan Urea/ZA.")
-        if s['ph'] < 5.5: st.warning("Butuh Kapur Dolomit.")
-        elif s['ph'] > 7.5: st.warning("Butuh Belerang.")
-        else: st.success("Kondisi optimal.")
-        
+    with st.expander("ANALISIS DAN REKOMENDASI"):
+        if s['n'] < 80: st.error("Rekomendasi: Kadar Nitrogen rendah.")
+        if s['ph'] < 5.5: st.warning("Kondisi: Tanah terlalu asam.")
+        elif s['ph'] > 7.5: st.warning("Kondisi: Tanah cenderung basa.")
+        else: st.success("Kondisi: Optimal.")
+        st.write(f"Prioritas: **{'Tinggi' if (s['n'] < 50 or s['ph'] < 5.0) else 'Normal'}**")
+
     st.markdown("</div>", unsafe_allow_html=True)
