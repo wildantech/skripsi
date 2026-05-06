@@ -7,14 +7,14 @@ import requests
 from shapely.geometry import shape, Point
 from streamlit_gsheets import GSheetsConnection
 
-# 1. KONFIGURASI HALAMAN UTAMA
+# 1. KONFIGURASI HALAMAN
 st.set_page_config(
     page_title="Wildantech | Intelligence Dashboard",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS: DESAIN MODERN FORMAL (Sesuai Versi Mas Wildan) ---
+# --- CSS: DESAIN MODERN (SESUAI REQUEST MOBILE STABLE) ---
 st.markdown("""
     <style>
     [data-testid="stAppViewContainer"] > section:nth-child(2) { padding: 0 !important; }
@@ -52,17 +52,18 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. FUNGSI TEKNIS
+# 2. FUNGSI PENGAMBILAN DATA & ELEVASI
 def get_elevation(lat, lon):
+    """Mengambil data MDPL secara otomatis via API Open-Topo"""
     try:
-        url = f"https://api.open-elevation.com/api/v1/lookup?locations={lat},{lon}"
-        response = requests.get(url, timeout=3) # Timeout lebih pendek agar tidak lag
+        url = f"https://api.opentopodata.org/v1/srtm30m?locations={lat},{lon}"
+        response = requests.get(url, timeout=3)
         if response.status_code == 200:
             elev = response.json()['results'][0]['elevation']
-            return f"{elev} m"
-        return "Data GPS" # Teks cadangan jika API sibuk
+            return f"{int(elev)} MDPL" if elev else "Wonosobo"
+        return "Wonosobo"
     except:
-        return "Data GPS"
+        return "Wonosobo"
 
 @st.cache_data(ttl=60)
 def get_data():
@@ -87,13 +88,7 @@ def get_geojson():
     except:
         return None
 
-# 3. LOGIKA STATE
-if 'selected_id' not in st.session_state:
-    st.session_state.selected_id = None
-
-df = get_data()
-geo_desa = get_geojson()
-
+# 3. LOGIKA WILAYAH
 def get_village_info(lat, lon, g_data):
     if not g_data: return "Wonosobo", "Jawa Tengah"
     p = Point(lon, lat)
@@ -102,14 +97,21 @@ def get_village_info(lat, lon, g_data):
             return feat['properties'].get('ds', 'Terdeteksi'), feat['properties'].get('kec', '-')
     return "Luar Area", "-"
 
+# 4. STATE MANAGEMENT
+if 'selected_id' not in st.session_state:
+    st.session_state.selected_id = None
+
+df = get_data()
+geo_desa = get_geojson()
+
 # --- SIDEBAR ---
 with st.sidebar:
     st.title("Panel Kontrol")
-    if st.button("Reset / Bersihkan Tampilan"):
+    if st.button("Reset Tampilan"):
         st.session_state.selected_id = None
         st.rerun()
 
-# --- PETA UTAMA ---
+# --- VISUALISASI PETA ---
 center_lat = df['lat'].mean() if not df.empty else -7.35
 center_lon = df['lon'].mean() if not df.empty else 109.9
 
@@ -119,6 +121,7 @@ if geo_desa:
     folium.GeoJson(geo_desa, style_function=lambda x: {'fillColor': '#238636', 'color': '#deff9a', 'weight': 1, 'fillOpacity': 0.1}).add_to(m)
 
 for row in df.itertuples():
+    # Indikator Dinas: Merah jika tanah kritis (N rendah atau pH ekstrem)
     status_warna = "#deff9a" if (5.5 <= row.ph <= 7.0 and row.n >= 80) else "#ff4b4b"
     folium.CircleMarker(
         location=[row.lat, row.lon], radius=12, color=status_warna, fill=True, fill_opacity=0.8,
@@ -136,11 +139,11 @@ if out and out.get("last_object_clicked_popup"):
     except:
         pass
 
-# --- TAMPILAN KARTU INFORMASI (Versi Mas Wildan yang Sudah Diperbaiki) ---
+# --- TAMPILAN KARTU INFORMASI (DATA UNTUK DINAS & PETANI) ---
 if st.session_state.selected_id:
     s = df[df['id'] == st.session_state.selected_id].iloc[0]
     ds, kc = get_village_info(s['lat'], s['lon'], geo_desa)
-    mdpl = get_elevation(s['lat'], s['lon']) # Ambil data MDPL
+    mdpl = get_elevation(s['lat'], s['lon'])
     
     st.markdown(f"""
     <div class="floating-card">
@@ -162,11 +165,22 @@ if st.session_state.selected_id:
         </div>
     """, unsafe_allow_html=True)
 
-    with st.expander("ANALISIS DAN REKOMENDASI"):
-        if s['n'] < 80: st.error("Rekomendasi: Kadar Nitrogen rendah.")
-        if s['ph'] < 5.5: st.warning("Kondisi: Tanah terlalu asam.")
-        elif s['ph'] > 7.5: st.warning("Kondisi: Tanah cenderung basa.")
-        else: st.success("Kondisi: Optimal.")
-        st.write(f"Prioritas: **{'Tinggi' if (s['n'] < 50 or s['ph'] < 5.0) else 'Normal'}**")
+    # BAGIAN ANALISIS UNTUK DINAS (EXPANDER)
+    with st.expander("DATA ANALISIS DINAS & REKOMENDASI"):
+        # Logika Otomatis untuk Laporan Dinas
+        prioritas = "TINGGI (Kritis)" if (s['n'] < 50 or s['ph'] < 5.0) else "Normal"
+        st.write(f"**Status Lahan:** {prioritas}")
+        
+        if s['n'] < 80:
+            st.error("Rekomendasi: Subsidi pupuk Nitrogen (Urea/ZA) diperlukan di titik ini.")
+        if s['ph'] < 5.5:
+            st.warning("Kondisi: Tanah Asam. Butuh intervensi Kapur Dolomit.")
+        elif s['ph'] > 7.5:
+            st.warning("Kondisi: Tanah Basa. Butuh aplikasi Belerang.")
+        else:
+            st.success("Kondisi: Tanah sehat dan optimal.")
+            
+        st.divider()
+        st.info("Data EC menunjukkan kemampuan tanah dalam menghantar nutrisi. Nilai rendah menandakan tanah butuh pembenah organik.")
 
     st.markdown("</div>", unsafe_allow_html=True)
