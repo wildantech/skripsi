@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS: DESAIN MODERN (SESUAI REQUEST MOBILE STABLE) ---
+# --- CSS: DESAIN MODERN & ELEGAN (MOBILE STABLE) ---
 st.markdown("""
     <style>
     [data-testid="stAppViewContainer"] > section:nth-child(2) { padding: 0 !important; }
@@ -25,7 +25,7 @@ st.markdown("""
         position: fixed;
         top: 20px;
         right: 20px;
-        width: 350px;
+        width: 360px;
         background: rgba(13, 17, 23, 0.95);
         backdrop-filter: blur(15px);
         border: 1px solid rgba(222, 255, 154, 0.3);
@@ -34,6 +34,21 @@ st.markdown("""
         z-index: 10000;
         color: white;
         box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    
+    /* Style untuk Badge Nama Tanaman agar Estetik */
+    .plant-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        font-size: 11px;
+        font-weight: bold;
+        border-radius: 20px;
+        background: rgba(222, 255, 154, 0.15);
+        color: #deff9a;
+        border: 1px solid rgba(222, 255, 154, 0.4);
+        margin-top: 5px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
     
     .grid-metrics {
@@ -65,7 +80,7 @@ def get_elevation(lat, lon):
     except:
         return "Wonosobo"
 
-@st.cache_data(ttl=10) # Set kecil 10 detik agar data kiriman ESP32 cepat muncul saat di-refresh
+@st.cache_data(ttl=10) # 10 Detik otomatis refresh dari Sheets
 def get_data():
     url = "https://docs.google.com/spreadsheets/d/1tDeGWOU8EyLa7rgxCcRVXAu05CcezDFlI9K0SmIPN1Y/edit?usp=sharing"
     try:
@@ -73,11 +88,17 @@ def get_data():
         df = conn.read(spreadsheet=url)
         df.columns = df.columns.str.strip().str.lower()
         
-        # SINKRONISASI KOLOM INTI
-        cols = ['lat', 'lon', 'n', 'p', 'k', 'ph', 'ec', 'temp', 'moist']
+        # 🚀 PERBAIKAN: Paksa lat dan lon menjadi float murni (Atasi masalah koma/string)
+        if 'lat' in df.columns and 'lon' in df.columns:
+            df['lat'] = pd.to_numeric(df['lat'].astype(str).str.replace(',', '.').str.strip(), errors='coerce')
+            df['lon'] = pd.to_numeric(df['lon'].astype(str).str.replace(',', '.').str.strip(), errors='coerce')
+        
+        # SINKRONISASI KOLOM INTINYA
+        cols = ['n', 'p', 'k', 'ph', 'ec', 'temp', 'moist']
         for c in cols:
             if c in df.columns:
-                df[c] = pd.to_numeric(df[c].astype(str).str.replace(',', '.'), errors='coerce')
+                df[c] = pd.to_numeric(df[c].astype(str).str.replace(',', '.').str.strip(), errors='coerce')
+                
         return df.dropna(subset=['lat', 'lon'])
     except Exception as e:
         st.error(f"Gagal memuat Google Sheets: {e}")
@@ -125,7 +146,7 @@ if geo_desa:
 
 if not df.empty:
     for row in df.itertuples():
-        # Indikator Dinas: Merah jika tanah kritis (N rendah atau pH ekstrem)
+        # Berikan penanda warna berdasarkan kondisi tanah
         status_warna = "#deff9a" if (5.5 <= row.ph <= 7.0 and row.n >= 80) else "#ff4b4b"
         folium.CircleMarker(
             location=[row.lat, row.lon], radius=12, color=status_warna, fill=True, fill_opacity=0.8,
@@ -151,17 +172,32 @@ if st.session_state.selected_id and not df.empty:
         ds, kc = get_village_info(s['lat'], s['lon'], geo_desa)
         mdpl = get_elevation(s['lat'], s['lon'])
         
-        # Cek jika kolom tanaman tersedia di sheets
-        nama_tanaman = s['tanaman'].upper() if 'tanaman' in df.columns and pd.notna(s['tanaman']) else "UMUM"
+        # Penentuan nama tanaman dan emoji secara otomatis agar menarik
+        raw_tanaman = str(s['tanaman']).upper() if 'tanaman' in df.columns and pd.notna(s['tanaman']) else "UMUM"
+        if "CABAI" in raw_tanaman: emoji = "🌶️ "
+        elif "PADI" in raw_tanaman: emoji = "🌾 "
+        elif "JAGUNG" in raw_tanaman: emoji = "🌽 "
+        else: emoji = "🌱 "
         
+        # 🚀 LAYOUT KARTU ATAS (NAMA DESA & BADGE TANAMAN)
         st.markdown(f"""
         <div class="floating-card">
             <div style="margin-bottom: 10px;">
-                <span style="color:#deff9a; font-size:10px; font-weight:bold; letter-spacing:1px;">WILDANTECH MONITORING ({nama_tanaman})</span>
-                <h2 style="margin:2px 0 0 0; font-size:22px;">Desa {ds}</h2>
+                <span style="color:rgba(255,255,255,0.4); font-size:10px; font-weight:bold; letter-spacing:1px;">WILDANTECH MONITORING SYSTEM</span>
+                <h2 style="margin:2px 0 0 0; font-size:24px;">Desa {ds}</h2>
                 <p style="margin:0; opacity:0.6; font-size:12px;">Kecamatan {kc} | ID: {int(s['id'])} | <b>{mdpl}</b></p>
+                <div class="plant-badge">{emoji}{raw_tanaman}</div>
             </div>
-            <div style="border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
+            <div style="border-top:1px solid rgba(255,255,255,0.1); padding-top:12px; margin-bottom: 12px;">
+        """, unsafe_allow_html=True)
+
+        # 🚀 TOMBOL TUTUP MANUAL (Mereset Tampilan Kartu)
+        if st.button("✖ Tutup Detail Lahan", key="close_card_btn", use_container_width=True):
+            st.session_state.selected_id = None
+            st.rerun()
+
+        # LAYOUT GRID METRIKS SENSOR
+        st.markdown(f"""
                 <div class="grid-metrics">
                     <div class="metric-small"><small>Nitrogen (N)</small><br><b>{s['n']} mg/kg</b></div>
                     <div class="metric-small"><small>Phosphor (P)</small><br><b>{s['p']} mg/kg</b></div>
@@ -189,6 +225,6 @@ if st.session_state.selected_id and not df.empty:
                 st.success("Kondisi: Tanah sehat dan optimal.")
                 
             st.divider()
-            st.info("Data EC menunjukkan kemampuan tanah dalam menghantar nutrisi. Nilai rendah menandakan tanah butuh pembenah organik.")
+            st.info("Data EC menunjukkan kemampuan tanah dalam menghantar hara nutrisi.")
 
         st.markdown("</div>", unsafe_allow_html=True)
