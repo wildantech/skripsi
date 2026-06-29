@@ -14,13 +14,14 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS: DESAIN MODERN & ELEGAN (MOBILE STABLE) ---
+# --- CSS: DESAIN MODERN (MOBILE STABLE & FLOATING CARD LENGKAP) ---
 st.markdown("""
     <style>
     [data-testid="stAppViewContainer"] > section:nth-child(2) { padding: 0 !important; }
     .block-container { padding: 0 !important; max-width: 100% !important; }
     header, footer { visibility: hidden; }
     
+    /* Wadah Utama Kartu Melayang */
     .floating-card {
         position: fixed;
         top: 20px;
@@ -51,6 +52,7 @@ st.markdown("""
         letter-spacing: 0.5px;
     }
     
+    /* Grid Dua Kolom di Dalam Kartu */
     .grid-metrics {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -58,6 +60,7 @@ st.markdown("""
         margin-top: 10px;
     }
     
+    /* Desain Kotak Kecil Parameter Sensor */
     .metric-small {
         background: rgba(255,255,255,0.05);
         padding: 8px;
@@ -80,7 +83,7 @@ def get_elevation(lat, lon):
     except:
         return "Wonosobo"
 
-@st.cache_data(ttl=10) # Set 10 detik agar data kiriman alat cepat muncul
+@st.cache_data(ttl=10) # Auto-refresh tiap 10 detik agar kiriman ESP32 cepat muncul
 def get_data():
     url = "https://docs.google.com/spreadsheets/d/1tDeGWOU8EyLa7rgxCcRVXAu05CcezDFlI9K0SmIPN1Y/edit?usp=sharing"
     try:
@@ -88,7 +91,7 @@ def get_data():
         df = conn.read(spreadsheet=url)
         df.columns = df.columns.str.strip().str.lower()
         
-        # 🚀 PERBAIKAN: Konversi tipe data koordinat lat & lon secara aman murni float
+        # 🚀 PERBAIKAN SINKRONISASI COORD: Paksa lat & lon murni jadi float angka desimal
         if 'lat' in df.columns and 'lon' in df.columns:
             df['lat'] = pd.to_numeric(df['lat'].astype(str).str.replace(',', '.').str.strip(), errors='coerce')
             df['lon'] = pd.to_numeric(df['lon'].astype(str).str.replace(',', '.').str.strip(), errors='coerce')
@@ -109,7 +112,7 @@ def get_geojson():
     except:
         return None
 
-# 3. LOGIKA WILAYAH
+# 3. LOGIKA PENENTUAN WILAYAH
 def get_village_info(lat, lon, g_data):
     if not g_data: return "Wonosobo", "Jawa Tengah"
     p = Point(lon, lat)
@@ -125,14 +128,14 @@ if 'selected_id' not in st.session_state:
 df = get_data()
 geo_desa = get_geojson()
 
-# --- SIDEBAR ---
+# --- SIDEBAR CONTROL PANEL ---
 with st.sidebar:
     st.title("Panel Kontrol")
     if st.button("Reset Tampilan"):
         st.session_state.selected_id = None
         st.rerun()
 
-# --- VISUALISASI PETA ---
+# --- VISUALISASI PETA BASEMAP ---
 center_lat = df['lat'].mean() if not df.empty else -7.35
 center_lon = df['lon'].mean() if not df.empty else 109.9
 
@@ -143,6 +146,7 @@ if geo_desa:
 
 if not df.empty:
     for row in df.itertuples():
+        # Penanda titik kritis atau optimal berdasarkan standar hara dinas
         status_warna = "#deff9a" if (5.5 <= row.ph <= 7.0 and row.n >= 80) else "#ff4b4b"
         folium.CircleMarker(
             location=[row.lat, row.lon], radius=12, color=status_warna, fill=True, fill_opacity=0.8,
@@ -168,14 +172,21 @@ if st.session_state.selected_id and not df.empty:
         ds, kc = get_village_info(s['lat'], s['lon'], geo_desa)
         mdpl = get_elevation(s['lat'], s['lon'])
         
-        # Penentuan nama komoditas tanaman beserta ikon emoji
+        # Penentuan nama komoditas tanaman beserta ikon emoji secara otomatis
         raw_tanaman = str(s['tanaman']).upper() if 'tanaman' in df.columns and pd.notna(s['tanaman']) else "UMUM"
         if "CABAI" in raw_tanaman: emoji = "🌶️ "
         elif "PADI" in raw_tanaman: emoji = "🌾 "
         elif "JAGUNG" in raw_tanaman: emoji = "🌽 "
+        elif "SINGKONG" in raw_tanaman: emoji = "🌱 "
         else: emoji = "🌱 "
         
-        # 🚀 1. BUKA KARTU (Bagian Header & Nama Desa)
+        # 🚀 PROSES ACTION TOMBOL CLOSE BERBASIS URL QUERY PARAMETERS
+        if "close" in st.query_params:
+            st.session_state.selected_id = None
+            st.query_params.clear()
+            st.rerun()
+
+        # 🚀 MASSIVE INJECTION: Gabungkan semua UI Metrik ke dalam SATU BLOK HTML Kartu Melayang
         st.markdown(f"""
         <div class="floating-card">
             <div style="margin-bottom: 10px;">
@@ -184,17 +195,17 @@ if st.session_state.selected_id and not df.empty:
                 <p style="margin:0; opacity:0.6; font-size:12px;">Kecamatan {kc} | ID: {int(s['id'])} | <b>{mdpl}</b></p>
                 <div class="plant-badge">{emoji}{raw_tanaman}</div>
             </div>
-            <div style="border-top:1px solid rgba(255,255,255,0.1); padding-top:12px; margin-bottom: 12px;">
-        """, unsafe_allow_html=True)
+            
+            <div style="border-top:1px solid rgba(255,255,255,0.1); padding-top:12px;">
+                <a href="/?close=true" target="_self" style="text-decoration: none;">
+                    <div style="background: rgba(255, 75, 75, 0.15); border: 1px solid rgba(255, 75, 75, 0.4); 
+                                color: #ff4b4b; text-align: center; border-radius: 8px; padding: 8px; 
+                                font-size: 13px; font-weight: bold; cursor: pointer; margin-bottom: 15px;">
+                        ✖ Tutup Detail Lahan
+                    </div>
+                </a>
 
-        # 🚀 2. TOMBOL TUTUP MANUAL (Menyatu di dalam kartu bagian atas)
-        if st.button("✖ Tutup Detail Lahan", key="close_card_btn", use_container_width=True):
-            st.session_state.selected_id = None
-            st.rerun()
-
-        # 🚀 3. METRIK SENSOR (Masuk di dalam kartu)
-        st.markdown(f"""
-                <div class="grid-metrics" style="margin-top: 15px;">
+                <div class="grid-metrics">
                     <div class="metric-small"><small>Nitrogen (N)</small><br><b>{s['n']} mg/kg</b></div>
                     <div class="metric-small"><small>Phosphor (P)</small><br><b>{s['p']} mg/kg</b></div>
                     <div class="metric-small"><small>Kalium (K)</small><br><b>{s['k']} mg/kg</b></div>
@@ -204,24 +215,24 @@ if st.session_state.selected_id and not df.empty:
                     <div class="metric-small" style="grid-column: span 2;"><small>Konduktivitas Listrik (EC)</small><br><b>{s['ec']} us/cm</b></div>
                 </div>
             </div>
+        </div>
         """, unsafe_allow_html=True)
 
-        # 🚀 4. EXPANDER REKOMENDASI (Juga ikut mengunci di dalam kartu)
-        with st.expander("DATA ANALISIS DINAS & REKOMENDASI"):
-            prioritas = "TINGGI (Kritis)" if (s['n'] < 50 or s['ph'] < 5.0) else "Normal"
-            st.write(f"**Status Lahan:** {prioritas}")
-            
-            if s['n'] < 80:
-                st.error("Rekomendasi: Subsidi pupuk Nitrogen (Urea/ZA) diperlukan di titik ini.")
-            if s['ph'] < 5.5:
-                st.warning("Kondisi: Tanah Asam. Butuh intervensi Kapur Dolomit.")
-            elif s['ph'] > 7.5:
-                st.warning("Kondisi: Tanah Basa. Butuh aplikasi Belerang.")
-            else:
-                st.success("Kondisi: Tanah sehat dan optimal.")
-                
+        # 🚀 EXPANDER DATA ANALISIS DINAS & REKOMENDASI (Digeser ke Sidebar agar Kartu Peta Tetap Ramping)
+        with st.sidebar:
             st.divider()
-            st.info("Data EC menunjukkan kemampuan tanah dalam menghantar nutrisi.")
-
-        # 🚀 5. PENUTUP KARTU MELAYANG
-        st.markdown("</div>", unsafe_allow_html=True)
+            with st.expander("🔍 ANALISIS DINAS & REKOMENDASI", expanded=True):
+                prioritas = "TINGGI (Kritis)" if (s['n'] < 50 or s['ph'] < 5.0) else "Normal"
+                st.write(f"**Status Lahan:** {prioritas}")
+                
+                if s['n'] < 80:
+                    st.error("Rekomendasi: Subsidi pupuk Nitrogen (Urea/ZA) diperlukan di titik ini.")
+                if s['ph'] < 5.5:
+                    st.warning("Kondisi: Tanah Asam. Butuh intervensi Kapur Dolomit.")
+                elif s['ph'] > 7.5:
+                    st.warning("Kondisi: Tanah Basa. Butuh aplikasi Belerang.")
+                else:
+                    st.success("Kondisi: Tanah sehat dan optimal.")
+                
+                st.divider()
+                st.info("Data EC menunjukkan kemampuan tanah dalam menghantar nutrisi.")
