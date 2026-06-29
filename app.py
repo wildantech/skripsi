@@ -16,59 +16,59 @@ st.set_page_config(
 
 # --- CSS: DESAIN MODERN (MOBILE STABLE & FLOATING CARD UTUH) ---
 st.markdown("""
-    <style>
-    [data-testid="stAppViewContainer"] > section:nth-child(2) { padding: 0 !important; }
-    .block-container { padding: 0 !important; max-width: 100% !important; }
-    header, footer { visibility: hidden; }
-    
-    /* Wadah Utama Kartu Melayang */
-    .floating-card {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        width: 360px;
-        background: rgba(13, 17, 23, 0.95);
-        backdrop-filter: blur(15px);
-        border: 1px solid rgba(222, 255, 154, 0.3);
-        border-radius: 15px;
-        padding: 20px;
-        z-index: 10000;
-        color: white;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-    }
-    
-    /* Style untuk Badge Nama Tanaman agar Estetik */
-    .plant-badge {
-        display: inline-block;
-        padding: 4px 10px;
-        font-size: 11px;
-        font-weight: bold;
-        border-radius: 20px;
-        background: rgba(222, 255, 154, 0.15);
-        color: #deff9a;
-        border: 1px solid rgba(222, 255, 154, 0.4);
-        margin-top: 8px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    
-    /* Grid Dua Kolom di Dalam Kartu */
-    .grid-metrics {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-        margin-top: 10px;
-    }
-    
-    /* Desain Kotak Kecil Parameter Sensor */
-    .metric-small {
-        background: rgba(255,255,255,0.05);
-        padding: 8px;
-        border-radius: 8px;
-        border-left: 3px solid #deff9a;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+<style>
+[data-testid="stAppViewContainer"] > section:nth-child(2) { padding: 0 !important; }
+.block-container { padding: 0 !important; max-width: 100% !important; }
+header, footer { visibility: hidden; }
+
+/* Wadah Utama Kartu Melayang */
+.floating-card {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 360px;
+    background: rgba(13, 17, 23, 0.95);
+    backdrop-filter: blur(15px);
+    border: 1px solid rgba(222, 255, 154, 0.3);
+    border-radius: 15px;
+    padding: 20px;
+    z-index: 10000;
+    color: white;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+
+/* Style untuk Badge Nama Tanaman agar Estetik */
+.plant-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: bold;
+    border-radius: 20px;
+    background: rgba(222, 255, 154, 0.15);
+    color: #deff9a;
+    border: 1px solid rgba(222, 255, 154, 0.4);
+    margin-top: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Grid Dua Kolom di Dalam Kartu */
+.grid-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+/* Desain Kotak Kecil Parameter Sensor */
+.metric-small {
+    background: rgba(255,255,255,0.05);
+    padding: 8px;
+    border-radius: 8px;
+    border-left: 3px solid #deff9a;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # 2. FUNGSI PENGAMBILAN DATA & ELEVASI
 def get_elevation(lat, lon):
@@ -83,7 +83,7 @@ def get_elevation(lat, lon):
     except:
         return "Wonosobo"
 
-@st.cache_data(ttl=10) # Auto-refresh tiap 10 detik agar data dari alat cepat muncul
+@st.cache_data(ttl=10) # Auto-refresh tiap 10 detik
 def get_data():
     url = "https://docs.google.com/spreadsheets/d/1tDeGWOU8EyLa7rgxCcRVXAu05CcezDFlI9K0SmIPN1Y/edit?usp=sharing"
     try:
@@ -91,7 +91,6 @@ def get_data():
         df = conn.read(spreadsheet=url)
         df.columns = df.columns.str.strip().str.lower()
         
-        # 🚀 PERBAIKAN SINKRONISASI COORD: Paksa lat & lon murni jadi float angka desimal
         if 'lat' in df.columns and 'lon' in df.columns:
             df['lat'] = pd.to_numeric(df['lat'].astype(str).str.replace(',', '.').str.strip(), errors='coerce')
             df['lon'] = pd.to_numeric(df['lon'].astype(str).str.replace(',', '.').str.strip(), errors='coerce')
@@ -146,7 +145,6 @@ if geo_desa:
 
 if not df.empty:
     for row in df.itertuples():
-        # Penanda titik kritis atau optimal berdasarkan standar hara dinas
         status_warna = "#deff9a" if (5.5 <= row.ph <= 7.0 and row.n >= 80) else "#ff4b4b"
         folium.CircleMarker(
             location=[row.lat, row.lon], radius=12, color=status_warna, fill=True, fill_opacity=0.8,
@@ -172,7 +170,6 @@ if st.session_state.selected_id and not df.empty:
         ds, kc = get_village_info(s['lat'], s['lon'], geo_desa)
         mdpl = get_elevation(s['lat'], s['lon'])
         
-        # Penentuan nama komoditas tanaman beserta ikon emoji secara otomatis
         raw_tanaman = str(s['tanaman']).upper() if 'tanaman' in df.columns and pd.notna(s['tanaman']) else "UMUM"
         if "CABAI" in raw_tanaman: emoji = "🌶️ "
         elif "PADI" in raw_tanaman: emoji = "🌾 "
@@ -180,58 +177,51 @@ if st.session_state.selected_id and not df.empty:
         elif "SINGKONG" in raw_tanaman: emoji = "🌱 "
         else: emoji = "🌱 "
         
-        # 🚀 PROSES ACTION TOMBOL CLOSE BERBASIS URL QUERY PARAMETERS
         if "close" in st.query_params:
             st.session_state.selected_id = None
             st.query_params.clear()
             st.rerun()
 
-        # Ekstrak data ke variabel teks biasa dulu agar tidak merusak formatting HTML Streamlit
-        val_n = str(s['n'])
-        val_p = str(s['p'])
-        val_k = str(s['k'])
-        val_ph = str(s['ph'])
-        val_temp = str(s['temp'])
-        val_moist = str(s['moist'])
-        val_ec = str(s['ec'])
-        val_id = str(int(s['id']))
-
-        # 🚀 MASSIVE INJECTION: Gabungkan semua UI Metrik ke dalam SATU BLOK HTML Kartu Melayang secara Utuh
-        card_html = f"""
-        <div class="floating-card">
-            <div style="margin-bottom: 10px;">
-                <span style="color:rgba(255,255,255,0.4); font-size:10px; font-weight:bold; letter-spacing:1px;">WILDANTECH MONITORING SYSTEM</span>
-                <h2 style="margin:2px 0 0 0; font-size:24px;">Desa {ds}</h2>
-                <p style="margin:0; opacity:0.6; font-size:12px;">Kecamatan {kc} | ID: {val_id} | <b>{mdpl}</b></p>
-                <div class="plant-badge">{emoji}{raw_tanaman}</div>
+        # MASTER PLAN PERBAIKAN BOCOR: String HTML wajib rata kiri penuh (tanpa spasi tab di depan baris)
+        card_html = """
+<div class="floating-card">
+    <div style="margin-bottom: 10px;">
+        <span style="color:rgba(255,255,255,0.4); font-size:10px; font-weight:bold; letter-spacing:1px;">WILDANTECH MONITORING SYSTEM</span>
+        <h2 style="margin:2px 0 0 0; font-size:24px;">Desa {ds}</h2>
+        <p style="margin:0; opacity:0.6; font-size:12px;">Kecamatan {kc} | ID: {val_id} | <b>{mdpl}</b></p>
+        <div class="plant-badge">{emoji}{raw_tanaman}</div>
+    </div>
+    <div style="border-top:1px solid rgba(255,255,255,0.1); padding-top:12px;">
+        <a href="/?close=true" target="_self" style="text-decoration: none;">
+            <div style="background: rgba(255, 75, 75, 0.15); border: 1px solid rgba(255, 75, 75, 0.4); color: #ff4b4b; text-align: center; border-radius: 8px; padding: 8px; font-size: 13px; font-weight: bold; cursor: pointer; margin-bottom: 15px;">
+                ✖ Tutup Detail Lahan
             </div>
-            
-            <div style="border-top:1px solid rgba(255,255,255,0.1); padding-top:12px;">
-                <a href="/?close=true" target="_self" style="text-decoration: none;">
-                    <div style="background: rgba(255, 75, 75, 0.15); border: 1px solid rgba(255, 75, 75, 0.4); 
-                                color: #ff4b4b; text-align: center; border-radius: 8px; padding: 8px; 
-                                font-size: 13px; font-weight: bold; cursor: pointer; margin-bottom: 15px;">
-                        ✖ Tutup Detail Lahan
-                    </div>
-                </a>
-
-                <div class="grid-metrics">
-                    <div class="metric-small"><small>Nitrogen (N)</small><br><b>{val_n} mg/kg</b></div>
-                    <div class="metric-small"><small>Phosphor (P)</small><br><b>{val_p} mg/kg</b></div>
-                    <div class="metric-small"><small>Kalium (K)</small><br><b>{val_k} mg/kg</b></div>
-                    <div class="metric-small"><small>Tingkat pH</small><br><b>{val_ph}</b></div>
-                    <div class="metric-small"><small>Suhu Tanah</small><br><b>{val_temp}°C</b></div>
-                    <div class="metric-small"><small>Kelembapan</small><br><b>{val_moist}%</b></div>
-                    <div class="metric-small" style="grid-column: span 2;"><small>Konduktivitas Listrik (EC)</small><br><b>{val_ec} us/cm</b></div>
-                </div>
-            </div>
+        </a>
+        <div class="grid-metrics">
+            <div class="metric-small"><small>Nitrogen (N)</small><br><b>{val_n} mg/kg</b></div>
+            <div class="metric-small"><small>Phosphor (P)</small><br><b>{val_p} mg/kg</b></div>
+            <div class="metric-small"><small>Kalium (K)</small><br><b>{val_k} mg/kg</b></div>
+            <div class="metric-small"><small>Tingkat pH</small><br><b>{val_ph}</b></div>
+            <div class="metric-small"><small>Suhu Tanah</small><br><b>{val_temp}°C</b></div>
+            <div class="metric-small"><small>Kelembapan</small><br><b>{val_moist}%</b></div>
+            <div class="metric-small" style="grid-column: span 2;"><small>Konduktivitas Listrik (EC)</small><br><b>{val_ec} us/cm</b></div>
         </div>
-        """
+    </div>
+</div>
+"""
         
-        # Eksekusi murni kode HTML di atas agar dirender menjadi komponen visual stabil
-        st.markdown(card_html, unsafe_allow_html=True)
+        # Inject data menggunakan format() murni, lalu render dengan st.markdown
+        st.markdown(
+            card_html.format(
+                ds=ds, kc=kc, mdpl=mdpl, emoji=emoji, raw_tanaman=raw_tanaman,
+                val_id=str(int(s['id'])), val_n=str(s['n']), val_p=str(s['p']), 
+                val_k=str(s['k']), val_ph=str(s['ph']), val_temp=str(s['temp']), 
+                val_moist=str(s['moist']), val_ec=str(s['ec'])
+            ), 
+            unsafe_allow_html=True
+        )
 
-        # 🚀 EXPANDER DATA ANALISIS DINAS & REKOMENDASI (Digeser ke Sidebar agar Kartu Peta Tetap Ramping)
+        # 🚀 EXPANDER DATA ANALISIS DINAS & REKOMENDASI (Di Sidebar)
         with st.sidebar:
             st.divider()
             with st.expander("🔍 ANALISIS DINAS & REKOMENDASI", expanded=True):
