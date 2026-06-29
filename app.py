@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS: DESAIN MODERN (MOBILE STABLE & FLOATING CARD LENGKAP) ---
+# --- CSS: DESAIN MODERN (MOBILE STABLE & FLOATING CARD UTUH) ---
 st.markdown("""
     <style>
     [data-testid="stAppViewContainer"] > section:nth-child(2) { padding: 0 !important; }
@@ -83,7 +83,7 @@ def get_elevation(lat, lon):
     except:
         return "Wonosobo"
 
-@st.cache_data(ttl=10) # Auto-refresh tiap 10 detik agar kiriman ESP32 cepat muncul
+@st.cache_data(ttl=10) # Auto-refresh tiap 10 detik agar data dari alat cepat muncul
 def get_data():
     url = "https://docs.google.com/spreadsheets/d/1tDeGWOU8EyLa7rgxCcRVXAu05CcezDFlI9K0SmIPN1Y/edit?usp=sharing"
     try:
@@ -186,13 +186,23 @@ if st.session_state.selected_id and not df.empty:
             st.query_params.clear()
             st.rerun()
 
-        # 🚀 MASSIVE INJECTION: Gabungkan semua UI Metrik ke dalam SATU BLOK HTML Kartu Melayang
-        st.markdown(f"""
+        # Ekstrak data ke variabel teks biasa dulu agar tidak merusak formatting HTML Streamlit
+        val_n = str(s['n'])
+        val_p = str(s['p'])
+        val_k = str(s['k'])
+        val_ph = str(s['ph'])
+        val_temp = str(s['temp'])
+        val_moist = str(s['moist'])
+        val_ec = str(s['ec'])
+        val_id = str(int(s['id']))
+
+        # 🚀 MASSIVE INJECTION: Gabungkan semua UI Metrik ke dalam SATU BLOK HTML Kartu Melayang secara Utuh
+        card_html = f"""
         <div class="floating-card">
             <div style="margin-bottom: 10px;">
                 <span style="color:rgba(255,255,255,0.4); font-size:10px; font-weight:bold; letter-spacing:1px;">WILDANTECH MONITORING SYSTEM</span>
                 <h2 style="margin:2px 0 0 0; font-size:24px;">Desa {ds}</h2>
-                <p style="margin:0; opacity:0.6; font-size:12px;">Kecamatan {kc} | ID: {int(s['id'])} | <b>{mdpl}</b></p>
+                <p style="margin:0; opacity:0.6; font-size:12px;">Kecamatan {kc} | ID: {val_id} | <b>{mdpl}</b></p>
                 <div class="plant-badge">{emoji}{raw_tanaman}</div>
             </div>
             
@@ -206,17 +216,20 @@ if st.session_state.selected_id and not df.empty:
                 </a>
 
                 <div class="grid-metrics">
-                    <div class="metric-small"><small>Nitrogen (N)</small><br><b>{s['n']} mg/kg</b></div>
-                    <div class="metric-small"><small>Phosphor (P)</small><br><b>{s['p']} mg/kg</b></div>
-                    <div class="metric-small"><small>Kalium (K)</small><br><b>{s['k']} mg/kg</b></div>
-                    <div class="metric-small"><small>Tingkat pH</small><br><b>{s['ph']}</b></div>
-                    <div class="metric-small"><small>Suhu Tanah</small><br><b>{s['temp']}°C</b></div>
-                    <div class="metric-small"><small>Kelembapan</small><br><b>{s['moist']}%</b></div>
-                    <div class="metric-small" style="grid-column: span 2;"><small>Konduktivitas Listrik (EC)</small><br><b>{s['ec']} us/cm</b></div>
+                    <div class="metric-small"><small>Nitrogen (N)</small><br><b>{val_n} mg/kg</b></div>
+                    <div class="metric-small"><small>Phosphor (P)</small><br><b>{val_p} mg/kg</b></div>
+                    <div class="metric-small"><small>Kalium (K)</small><br><b>{val_k} mg/kg</b></div>
+                    <div class="metric-small"><small>Tingkat pH</small><br><b>{val_ph}</b></div>
+                    <div class="metric-small"><small>Suhu Tanah</small><br><b>{val_temp}°C</b></div>
+                    <div class="metric-small"><small>Kelembapan</small><br><b>{val_moist}%</b></div>
+                    <div class="metric-small" style="grid-column: span 2;"><small>Konduktivitas Listrik (EC)</small><br><b>{val_ec} us/cm</b></div>
                 </div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """
+        
+        # Eksekusi murni kode HTML di atas agar dirender menjadi komponen visual stabil
+        st.markdown(card_html, unsafe_allow_html=True)
 
         # 🚀 EXPANDER DATA ANALISIS DINAS & REKOMENDASI (Digeser ke Sidebar agar Kartu Peta Tetap Ramping)
         with st.sidebar:
