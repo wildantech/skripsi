@@ -46,7 +46,7 @@ st.markdown("""
         background: rgba(222, 255, 154, 0.15);
         color: #deff9a;
         border: 1px solid rgba(222, 255, 154, 0.4);
-        margin-top: 5px;
+        margin-top: 8px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
@@ -80,7 +80,7 @@ def get_elevation(lat, lon):
     except:
         return "Wonosobo"
 
-@st.cache_data(ttl=10) # 10 Detik otomatis refresh dari Sheets
+@st.cache_data(ttl=10) # Set 10 detik agar data kiriman alat cepat muncul
 def get_data():
     url = "https://docs.google.com/spreadsheets/d/1tDeGWOU8EyLa7rgxCcRVXAu05CcezDFlI9K0SmIPN1Y/edit?usp=sharing"
     try:
@@ -88,20 +88,17 @@ def get_data():
         df = conn.read(spreadsheet=url)
         df.columns = df.columns.str.strip().str.lower()
         
-        # 🚀 PERBAIKAN: Paksa lat dan lon menjadi float murni (Atasi masalah koma/string)
+        # 🚀 PERBAIKAN: Konversi tipe data koordinat lat & lon secara aman murni float
         if 'lat' in df.columns and 'lon' in df.columns:
             df['lat'] = pd.to_numeric(df['lat'].astype(str).str.replace(',', '.').str.strip(), errors='coerce')
             df['lon'] = pd.to_numeric(df['lon'].astype(str).str.replace(',', '.').str.strip(), errors='coerce')
-        
-        # SINKRONISASI KOLOM INTINYA
+            
         cols = ['n', 'p', 'k', 'ph', 'ec', 'temp', 'moist']
         for c in cols:
             if c in df.columns:
                 df[c] = pd.to_numeric(df[c].astype(str).str.replace(',', '.').str.strip(), errors='coerce')
-                
         return df.dropna(subset=['lat', 'lon'])
-    except Exception as e:
-        st.error(f"Gagal memuat Google Sheets: {e}")
+    except:
         return pd.DataFrame()
 
 @st.cache_data
@@ -146,7 +143,6 @@ if geo_desa:
 
 if not df.empty:
     for row in df.itertuples():
-        # Berikan penanda warna berdasarkan kondisi tanah
         status_warna = "#deff9a" if (5.5 <= row.ph <= 7.0 and row.n >= 80) else "#ff4b4b"
         folium.CircleMarker(
             location=[row.lat, row.lon], radius=12, color=status_warna, fill=True, fill_opacity=0.8,
@@ -164,7 +160,7 @@ if out and out.get("last_object_clicked_popup"):
     except:
         pass
 
-# --- TAMPILAN KARTU INFORMASI ---
+# --- TAMPILAN KARTU INFORMASI (DATA UNTUK DINAS & PETANI) ---
 if st.session_state.selected_id and not df.empty:
     target_rows = df[df['id'] == st.session_state.selected_id]
     if not target_rows.empty:
@@ -172,14 +168,14 @@ if st.session_state.selected_id and not df.empty:
         ds, kc = get_village_info(s['lat'], s['lon'], geo_desa)
         mdpl = get_elevation(s['lat'], s['lon'])
         
-        # Penentuan nama tanaman dan emoji secara otomatis agar menarik
+        # Penentuan nama komoditas tanaman beserta ikon emoji
         raw_tanaman = str(s['tanaman']).upper() if 'tanaman' in df.columns and pd.notna(s['tanaman']) else "UMUM"
         if "CABAI" in raw_tanaman: emoji = "🌶️ "
         elif "PADI" in raw_tanaman: emoji = "🌾 "
         elif "JAGUNG" in raw_tanaman: emoji = "🌽 "
         else: emoji = "🌱 "
         
-        # 🚀 LAYOUT KARTU ATAS (NAMA DESA & BADGE TANAMAN)
+        # 🚀 1. BUKA KARTU (Bagian Header & Nama Desa)
         st.markdown(f"""
         <div class="floating-card">
             <div style="margin-bottom: 10px;">
@@ -191,14 +187,14 @@ if st.session_state.selected_id and not df.empty:
             <div style="border-top:1px solid rgba(255,255,255,0.1); padding-top:12px; margin-bottom: 12px;">
         """, unsafe_allow_html=True)
 
-        # 🚀 TOMBOL TUTUP MANUAL (Mereset Tampilan Kartu)
+        # 🚀 2. TOMBOL TUTUP MANUAL (Menyatu di dalam kartu bagian atas)
         if st.button("✖ Tutup Detail Lahan", key="close_card_btn", use_container_width=True):
             st.session_state.selected_id = None
             st.rerun()
 
-        # LAYOUT GRID METRIKS SENSOR
+        # 🚀 3. METRIK SENSOR (Masuk di dalam kartu)
         st.markdown(f"""
-                <div class="grid-metrics">
+                <div class="grid-metrics" style="margin-top: 15px;">
                     <div class="metric-small"><small>Nitrogen (N)</small><br><b>{s['n']} mg/kg</b></div>
                     <div class="metric-small"><small>Phosphor (P)</small><br><b>{s['p']} mg/kg</b></div>
                     <div class="metric-small"><small>Kalium (K)</small><br><b>{s['k']} mg/kg</b></div>
@@ -210,7 +206,7 @@ if st.session_state.selected_id and not df.empty:
             </div>
         """, unsafe_allow_html=True)
 
-        # BAGIAN ANALISIS UNTUK DINAS (EXPANDER)
+        # 🚀 4. EXPANDER REKOMENDASI (Juga ikut mengunci di dalam kartu)
         with st.expander("DATA ANALISIS DINAS & REKOMENDASI"):
             prioritas = "TINGGI (Kritis)" if (s['n'] < 50 or s['ph'] < 5.0) else "Normal"
             st.write(f"**Status Lahan:** {prioritas}")
@@ -225,6 +221,7 @@ if st.session_state.selected_id and not df.empty:
                 st.success("Kondisi: Tanah sehat dan optimal.")
                 
             st.divider()
-            st.info("Data EC menunjukkan kemampuan tanah dalam menghantar hara nutrisi.")
+            st.info("Data EC menunjukkan kemampuan tanah dalam menghantar nutrisi.")
 
+        # 🚀 5. PENUTUP KARTU MELAYANG
         st.markdown("</div>", unsafe_allow_html=True)
