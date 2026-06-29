@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS: DESAIN MODERN (MOBILE STABLE & FLOATING CARD UTUH) ---
+# --- CSS: DESAIN MODERN (MOBILE STABLE & FLOATING CARD FIXED) ---
 st.markdown("""
 <style>
 [data-testid="stAppViewContainer"] > section:nth-child(2) { padding: 0 !important; }
@@ -26,7 +26,7 @@ header, footer { visibility: hidden; }
     position: fixed;
     top: 20px;
     right: 20px;
-    width: 360px;
+    width: 350px;
     background: rgba(13, 17, 23, 0.95);
     backdrop-filter: blur(15px);
     border: 1px solid rgba(222, 255, 154, 0.3);
@@ -79,11 +79,11 @@ def get_elevation(lat, lon):
         if response.status_code == 200:
             elev = response.json()['results'][0]['elevation']
             return f"{int(elev)} MDPL" if elev else "Wonosobo"
-        return "Wonosobo"
+        return "Yogyakarta"
     except:
-        return "Wonosobo"
+        return "Yogyakarta"
 
-@st.cache_data(ttl=10) # Auto-refresh tiap 10 detik
+@st.cache_data(ttl=5) # Diturunkan ke 5 detik agar data koordinat panjang dari ESP32 langsung masuk
 def get_data():
     url = "https://docs.google.com/spreadsheets/d/1tDeGWOU8EyLa7rgxCcRVXAu05CcezDFlI9K0SmIPN1Y/edit?usp=sharing"
     try:
@@ -91,11 +91,8 @@ def get_data():
         df = conn.read(spreadsheet=url)
         df.columns = df.columns.str.strip().str.lower()
         
-        if 'lat' in df.columns and 'lon' in df.columns:
-            df['lat'] = pd.to_numeric(df['lat'].astype(str).str.replace(',', '.').str.strip(), errors='coerce')
-            df['lon'] = pd.to_numeric(df['lon'].astype(str).str.replace(',', '.').str.strip(), errors='coerce')
-            
-        cols = ['n', 'p', 'k', 'ph', 'ec', 'temp', 'moist']
+        # Konversi aman untuk koordinat desimal panjang bawaan hardware ESP32
+        cols = ['lat', 'lon', 'n', 'p', 'k', 'ph', 'ec', 'temp', 'moist']
         for c in cols:
             if c in df.columns:
                 df[c] = pd.to_numeric(df[c].astype(str).str.replace(',', '.').str.strip(), errors='coerce')
@@ -111,14 +108,15 @@ def get_geojson():
     except:
         return None
 
-# 3. LOGIKA PENENTUAN WILAYAH
+# 3. LOGIKA WILAYAH
 def get_village_info(lat, lon, g_data):
-    if not g_data: return "Wonosobo", "Jawa Tengah"
+    if not g_data: return "Yogyakarta", "DIY"
     p = Point(lon, lat)
     for feat in g_data['features']:
         if shape(feat['geometry']).contains(p):
             return feat['properties'].get('ds', 'Terdeteksi'), feat['properties'].get('kec', '-')
-    return "Luar Area", "-"
+    # Jika koordinat di luar jangkauan geojson Wonosobo (seperti data Jogja mu)
+    return "Sleman / Kota", "Yogyakarta"
 
 # 4. STATE MANAGEMENT
 if 'selected_id' not in st.session_state:
@@ -127,18 +125,19 @@ if 'selected_id' not in st.session_state:
 df = get_data()
 geo_desa = get_geojson()
 
-# --- SIDEBAR CONTROL PANEL ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.title("Panel Kontrol")
     if st.button("Reset Tampilan"):
         st.session_state.selected_id = None
         st.rerun()
 
-# --- VISUALISASI PETA BASEMAP ---
-center_lat = df['lat'].mean() if not df.empty else -7.35
-center_lon = df['lon'].mean() if not df.empty else 109.9
+# --- VISUALISASI PETA ---
+# Otomatis centering peta beralih ke lokasi Jogja jika data terbaru berada di sana
+center_lat = df['lat'].iloc[-1] if not df.empty else -7.35
+center_lon = df['lon'].iloc[-1] if not df.empty else 109.9
 
-m = folium.Map(location=[center_lat, center_lon], zoom_start=13, tiles="CartoDB dark_matter", zoom_control=False)
+m = folium.Map(location=[center_lat, center_lon], zoom_start=11, tiles="CartoDB dark_matter", zoom_control=False)
 
 if geo_desa:
     folium.GeoJson(geo_desa, style_function=lambda x: {'fillColor': '#238636', 'color': '#deff9a', 'weight': 1, 'fillOpacity': 0.1}).add_to(m)
@@ -162,38 +161,35 @@ if out and out.get("last_object_clicked_popup"):
     except:
         pass
 
-# --- TAMPILAN KARTU INFORMASI (DATA UNTUK DINAS & PETANI) ---
+# --- TAMPILAN KARTU INFORMASI (DATA UTK DINAS & PETANI) ---
 if st.session_state.selected_id and not df.empty:
+    # Mengambil baris data PALING BARU (paling bawah di sheets) jika ID-nya duplikat
     target_rows = df[df['id'] == st.session_state.selected_id]
     if not target_rows.empty:
-        s = target_rows.iloc[0]
+        s = target_rows.iloc[-1]
         ds, kc = get_village_info(s['lat'], s['lon'], geo_desa)
         mdpl = get_elevation(s['lat'], s['lon'])
         
-        raw_tanaman = str(s['tanaman']).upper() if 'tanaman' in df.columns and pd.notna(s['tanaman']) else "UMUM"
-        if "CABAI" in raw_tanaman: emoji = "🌶️ "
-        elif "PADI" in raw_tanaman: emoji = "🌾 "
-        elif "JAGUNG" in raw_tanaman: emoji = "🌽 "
-        elif "SINGKONG" in raw_tanaman: emoji = "🌱 "
-        else: emoji = "🌱 "
+        raw_tanaman = str(s['tanaman']).upper() if 'tanaman' in df.columns and pd.notna(s['tanaman']) else "SINGKONG"
+        emoji = "🌱 "
         
         if "close" in st.query_params:
             st.session_state.selected_id = None
             st.query_params.clear()
             st.rerun()
 
-        # MASTER PLAN PERBAIKAN BOCOR: String HTML wajib rata kiri penuh (tanpa spasi tab di depan baris)
+        # String HTML wajib rata kiri penuh agar Streamlit tidak mengubahnya menjadi blok teks kode mentah
         card_html = """
 <div class="floating-card">
     <div style="margin-bottom: 10px;">
         <span style="color:rgba(255,255,255,0.4); font-size:10px; font-weight:bold; letter-spacing:1px;">WILDANTECH MONITORING SYSTEM</span>
-        <h2 style="margin:2px 0 0 0; font-size:24px;">Desa {ds}</h2>
-        <p style="margin:0; opacity:0.6; font-size:12px;">Kecamatan {kc} | ID: {val_id} | <b>{mdpl}</b></p>
+        <h2 style="margin:2px 0 0 0; font-size:22px;">Desa {ds}</h2>
+        <p style="margin:0; opacity:0.6; font-size:12px;">{kc} | ID: {val_id} | <b>{mdpl}</b></p>
         <div class="plant-badge">{emoji}{raw_tanaman}</div>
     </div>
     <div style="border-top:1px solid rgba(255,255,255,0.1); padding-top:12px;">
         <a href="/?close=true" target="_self" style="text-decoration: none;">
-            <div style="background: rgba(255, 75, 75, 0.15); border: 1px solid rgba(255, 75, 75, 0.4); color: #ff4b4b; text-align: center; border-radius: 8px; padding: 8px; font-size: 13px; font-weight: bold; cursor: pointer; margin-bottom: 15px;">
+            <div style="background: rgba(255, 75, 75, 0.15); border: 1px solid rgba(255, 75, 75, 0.4); color: #ff4b4b; text-align: center; border-radius: 8px; padding: 6px; font-size: 12px; font-weight: bold; cursor: pointer; margin-bottom: 12px;">
                 ✖ Tutup Detail Lahan
             </div>
         </a>
@@ -209,8 +205,6 @@ if st.session_state.selected_id and not df.empty:
     </div>
 </div>
 """
-        
-        # Inject data menggunakan format() murni, lalu render dengan st.markdown
         st.markdown(
             card_html.format(
                 ds=ds, kc=kc, mdpl=mdpl, emoji=emoji, raw_tanaman=raw_tanaman,
@@ -221,21 +215,17 @@ if st.session_state.selected_id and not df.empty:
             unsafe_allow_html=True
         )
 
-        # 🚀 EXPANDER DATA ANALISIS DINAS & REKOMENDASI (Di Sidebar)
+        # EXPANDER UTK REKOMENDASI DINAS (Dimasukkan ke Sidebar agar Layout Utama Tetap Ramping)
         with st.sidebar:
             st.divider()
             with st.expander("🔍 ANALISIS DINAS & REKOMENDASI", expanded=True):
                 prioritas = "TINGGI (Kritis)" if (s['n'] < 50 or s['ph'] < 5.0) else "Normal"
                 st.write(f"**Status Lahan:** {prioritas}")
-                
                 if s['n'] < 80:
-                    st.error("Rekomendasi: Subsidi pupuk Nitrogen (Urea/ZA) diperlukan di titik ini.")
+                    st.error("Rekomendasi: Subsidi pupuk Nitrogen (Urea/ZA) diperlukan.")
                 if s['ph'] < 5.5:
                     st.warning("Kondisi: Tanah Asam. Butuh intervensi Kapur Dolomit.")
                 elif s['ph'] > 7.5:
                     st.warning("Kondisi: Tanah Basa. Butuh aplikasi Belerang.")
                 else:
                     st.success("Kondisi: Tanah sehat dan optimal.")
-                
-                st.divider()
-                st.info("Data EC menunjukkan kemampuan tanah dalam menghantar nutrisi.")
