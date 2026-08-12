@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wildantech — Panduan Kamus NPK</title>
+  <style>
+    :root { --bg:#071b18; --panel:#0e2925; --panel-2:#123630; --line:#27564b; --lime:#deff9a; --cyan:#62e5d1; --text:#f0f8f5; --muted:#afc6bf; --warn:#ffd166; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:radial-gradient(circle at 85% 0%,#164a40 0,transparent 36%),var(--bg); color:var(--text); font:16px/1.6 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { max-width:1000px; margin:auto; padding:42px 20px 68px; }
+    .hero { padding:30px; border:1px solid var(--line); border-radius:20px; background:linear-gradient(130deg,rgba(18,54,48,.95),rgba(7,27,24,.92)); }
+    .badge { color:var(--lime); font-size:.78rem; letter-spacing:.12em; font-weight:800; }
+    h1 { margin:8px 0; font-size:clamp(2rem,5vw,3.4rem); line-height:1.05; }
+    h2 { margin:0 0 12px; font-size:1.35rem; }
+    p { color:var(--muted); margin:8px 0; }
+    .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin:22px 0; }
+    .card, .notice { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:19px; }
+    .card strong { color:var(--cyan); font-size:1.4rem; display:block; }
+    .notice { border-left:4px solid var(--warn); margin:22px 0; }
+    .steps { counter-reset:step; display:grid; gap:12px; }
+    .step { position:relative; padding:17px 17px 17px 62px; background:var(--panel); border:1px solid var(--line); border-radius:14px; }
+    .step::before { counter-increment:step; content:counter(step); position:absolute; left:17px; top:17px; display:grid; place-items:center; width:28px; height:28px; border-radius:50%; background:var(--lime); color:#12332c; font-weight:900; }
+    table { width:100%; border-collapse:collapse; overflow:hidden; border:1px solid var(--line); border-radius:14px; background:var(--panel); }
+    th,td { padding:13px 14px; text-align:left; border-bottom:1px solid var(--line); }
+    th { background:var(--panel-2); color:var(--lime); font-size:.82rem; letter-spacing:.04em; }
+    tr:last-child td { border-bottom:0; }
+    .number { color:var(--cyan); font-weight:800; font-variant-numeric:tabular-nums; }
+    code { padding:2px 6px; border-radius:5px; background:#061310; color:var(--lime); }
+    .section { margin-top:34px; }
+    .source { font-size:.9rem; }
+    a { color:var(--cyan); }
+    @media(max-width:650px) { .grid { grid-template-columns:1fr; } main { padding:20px 14px 50px; } .hero { padding:22px; } table { font-size:.9rem; } th,td { padding:11px 9px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div class="badge">WILDANTECH · PANDUAN PENGGUNA</div>
+      <h1>Menambah Kamus Acuan NPK</h1>
+      <p>Gunakan halaman ini saat memasukkan tanaman baru pada menu <b>Kamus NPK</b> di alat. Nilai yang dimasukkan adalah target pembanding agar alat dapat memberi rekomendasi, bukan dosis pupuk yang harus langsung ditaburkan.</p>
+    </section>
+
+    <section class="grid" aria-label="Ringkasan satuan">
+      <div class="card"><strong>mg/kg</strong><p>Satuan target N, P, dan K pada alat.</p></div>
+      <div class="card"><strong>Bukan kg/ha</strong><p>Jangan memasukkan angka kebutuhan pupuk per hektare.</p></div>
+      <div class="card"><strong>Bukan gram</strong><p>Angka dipakai untuk membandingkan hasil sensor tanah.</p></div>
+    </section>
+
+    <aside class="notice">
+      <h2>Perhatian sebelum mengisi</h2>
+      <p>Masukkan angka bulat tanpa titik atau satuan. Contoh: target N <code>60</code>, P <code>30</code>, K <code>90</code>. Pada versi alat ini, pH acuan untuk kamus tambahan masih otomatis memakai 5,5–6,5.</p>
+    </aside>
+
+    <section class="section">
+      <h2>Langkah pengisian di alat</h2>
+      <div class="steps">
+        <div class="step"><b>Buka KAMUS NPK</b><br><span>Pilih tombol <code>[+] TAMBAH</code>.</span></div>
+        <div class="step"><b>Masukkan nama tanaman</b><br><span>Contoh: <code>Jagung</code>. Gunakan nama singkat agar terbaca jelas di layar.</span></div>
+        <div class="step"><b>Masukkan target N, P, dan K</b><br><span>Ikuti satu baris tanaman pada tabel di bawah, lalu tekan <code>SIMPAN</code>.</span></div>
+        <div class="step"><b>Pastikan tersimpan</b><br><span>Kamus baru akan muncul di daftar dan tetap tersimpan di memori internal setelah alat dimatikan.</span></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Patokan awal kamus tanaman</h2>
+      <p>Angka berikut adalah <b>nilai target awal praktis</b> untuk membedakan hasil rendah terhadap acuan tanaman pada aplikasi ini. Gunakan satu angka seperti yang diminta alat. Untuk rekomendasi pemupukan resmi, tetap sesuaikan dengan hasil uji laboratorium, varietas, fase tanam, dan arahan penyuluh setempat.</p>
+      <table>
+        <thead><tr><th>Tanaman</th><th>N (mg/kg)</th><th>P (mg/kg)</th><th>K (mg/kg)</th></tr></thead>
+        <tbody>
+          <tr><td>Singkong</td><td class="number">50</td><td class="number">30</td><td class="number">100</td></tr>
+          <tr><td>Padi</td><td class="number">60</td><td class="number">25</td><td class="number">80</td></tr>
+          <tr><td>Jagung</td><td class="number">60</td><td class="number">30</td><td class="number">90</td></tr>
+          <tr><td>Kedelai</td><td class="number">45</td><td class="number">25</td><td class="number">80</td></tr>
+          <tr><td>Cabai</td><td class="number">70</td><td class="number">35</td><td class="number">120</td></tr>
+          <tr><td>Tomat</td><td class="number">70</td><td class="number">35</td><td class="number">120</td></tr>
+          <tr><td>Kentang</td><td class="number">80</td><td class="number">40</td><td class="number">140</td></tr>
+          <tr><td>Kubis</td><td class="number">80</td><td class="number">35</td><td class="number">130</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section card">
+      <h2>Contoh: menambah Jagung</h2>
+      <p>Nama tanaman: <code>Jagung</code></p>
+      <p>Target N: <code>60</code> · Target P: <code>30</code> · Target K: <code>90</code></p>
+      <p>Jika hasil sensor lebih rendah dari target tersebut, alat akan menampilkan kebutuhan tambahan menurut rumus rekomendasi yang diprogram di perangkat.</p>
+    </section>
+
+    <section class="section source">
+      <h2>Catatan ilmiah</h2>
+      <p>Interpretasi N, P, dan K tanah berbeda menurut metode ekstraksi laboratorium dan karakter tanah. Karena itu tabel ini digunakan sebagai titik awal operasional untuk prototipe, bukan standar universal. Untuk validasi di Wonosobo, bandingkan pembacaan alat dengan sampel tanah yang diuji di laboratorium/UPT setempat dan revisi target kamus berdasarkan hasil tersebut.</p>
+      <p>Rujukan umum: <a href="https://www.fao.org/4/y2413e/y2413e00.htm" target="_blank" rel="noopener">FAO — Save and Grow: Cassava</a> dan pedoman evaluasi kesuburan tanah Balai Penelitian Tanah/Kementerian Pertanian.</p>
+    </section>
+  </main>
+</body>
+</html>
