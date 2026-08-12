@@ -83,23 +83,37 @@ def get_elevation(lat, lon):
     except:
         return "Yogyakarta"
 
-@st.cache_data(ttl=5) # Diturunkan ke 5 detik agar data koordinat panjang dari ESP32 langsung masuk
+@st.cache_data(ttl=5)
 def get_data():
-    url = "https://docs.google.com/spreadsheets/d/1tDeGWOU8EyLa7rgxCcRVXAu05CcezDFlI9K0SmIPN1Y/edit?usp=sharing"
+    url = (
+        "https://docs.google.com/spreadsheets/d/"
+        "1tDeGWOU8EyLa7rgxCcRVXAu05CcezDFlI9K0SmIPN1Y/edit"
+    )
+
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
-        df = conn.read(spreadsheet=url)
+
+        # Ambil data khusus dari tab Sheet2
+        df = conn.read(
+            spreadsheet=url,
+            worksheet="Sheet2"
+        )
+
         df.columns = df.columns.str.strip().str.lower()
-        
-        # Konversi aman untuk koordinat desimal panjang bawaan hardware ESP32
-        cols = ['lat', 'lon', 'n', 'p', 'k', 'ph', 'ec', 'temp', 'moist']
-        for c in cols:
-            if c in df.columns:
-                df[c] = pd.to_numeric(df[c].astype(str).str.replace(',', '.').str.strip(), errors='coerce')
-        # Simpan dataframe lengkap: data tanpa GPS tetap sah dan tetap tersedia
-        # untuk statistik/dashboard, hanya marker peta yang membutuhkan koordinat.
+
+        # Konversi kolom angka dari Google Sheets
+        cols = ["lat", "lon", "n", "p", "k", "ph", "ec", "temp", "moist"]
+        for col in cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(
+                    df[col].astype(str).str.replace(",", ".").str.strip(),
+                    errors="coerce"
+                )
+
         return df
-    except:
+
+    except Exception as error:
+        st.error(f"Gagal membaca Sheet2: {error}")
         return pd.DataFrame()
 
 @st.cache_data
