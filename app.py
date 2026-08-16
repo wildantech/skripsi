@@ -78,28 +78,25 @@ def get_elevation(lat, lon):
         response = requests.get(url, timeout=3)
         if response.status_code == 200:
             elev = response.json()['results'][0]['elevation']
-            return f"{int(elev)} MDPL" if elev else "Wonosobo"
+            return f"{int(elev)} MDPL" if elev is not None else "Wonosobo"
         return "Yogyakarta"
     except:
         return "Yogyakarta"
 
-@st.cache_data(ttl=5) # Diturunkan ke 5 detik agar data koordinat panjang dari ESP32 langsung masuk
+@st.cache_data(ttl=5)
 def get_data():
     url = "https://docs.google.com/spreadsheets/d/1tDeGWOU8EyLa7rgxCcRVXAu05CcezDFlI9K0SmIPN1Y/edit?gid=569291149#gid=569291149"
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
-        # Gunakan URL tab Sheet2 (gid), kompatibel dengan streamlit-gsheets
-        # versi yang tidak menerima parameter worksheet.
-        df = conn.read(spreadsheet=url)
+        # PERBAIKAN: Tambahkan ttl=5 pada conn.read() agar cache internal st.connection ikut expired
+        df = conn.read(spreadsheet=url, ttl=5)
         df.columns = df.columns.str.strip().str.lower()
         
         # Konversi aman untuk koordinat desimal panjang bawaan hardware ESP32
-        cols = ['lat', 'lon', 'n', 'p', 'k', 'ph', 'ec', 'temp', 'moist']
+        cols = ['lat', 'lon', 'n', 'p', 'k', 'ph', 'ec', 'temp', 'moist', 'id_grup']
         for c in cols:
             if c in df.columns:
                 df[c] = pd.to_numeric(df[c].astype(str).str.replace(',', '.').str.strip(), errors='coerce')
-        # Simpan dataframe lengkap: data tanpa GPS tetap sah dan tetap tersedia
-        # untuk statistik/dashboard, hanya marker peta yang membutuhkan koordinat.
         return df
     except:
         return pd.DataFrame()
@@ -114,12 +111,12 @@ def get_geojson():
 
 # 3. LOGIKA WILAYAH
 def get_village_info(lat, lon, g_data):
-    if not g_data: return "Yogyakarta", "DIY"
+    if not g_data or pd.isna(lat) or pd.isna(lon): 
+        return "Yogyakarta", "DIY"
     p = Point(lon, lat)
     for feat in g_data['features']:
         if shape(feat['geometry']).contains(p):
             return feat['properties'].get('ds', 'Terdeteksi'), feat['properties'].get('kec', '-')
-    # Jika koordinat di luar jangkauan geojson Wonosobo (seperti data Jogja mu)
     return "Sleman / Kota", "Yogyakarta"
 
 # 4. STATE MANAGEMENT
@@ -132,13 +129,13 @@ geo_desa = get_geojson()
 # --- SIDEBAR ---
 with st.sidebar:
     st.title("Panel Kontrol")
-    if st.button("Reset Tampilan"):
+    if st.button("Refresh / Reset Tampilan"):
+        st.cache_data.clear()  # Paksa bersihkan semua cache saat tombol ditekan
         st.session_state.selected_id = None
         st.rerun()
 
 # --- VISUALISASI PETA ---
-# Otomatis centering peta beralih ke lokasi Jogja jika data terbaru berada di sana
-df_peta = df.dropna(subset=['lat', 'lon']) if not df.empty else df
+df_peta = df.dropna(subset=['lat', 'lon', 'id_grup']) if not df.empty else df
 center_lat = df_peta['lat'].iloc[-1] if not df_peta.empty else -7.35
 center_lon = df_peta['lon'].iloc[-1] if not df_peta.empty else 109.9
 
@@ -149,10 +146,17 @@ if geo_desa:
 
 if not df_peta.empty:
     for row in df_peta.itertuples():
-        status_warna = "#deff9a" if (5.5 <= row.ph <= 7.0 and row.n >= 80) else "#ff4b4b"
+        # PERBAIKAN: Penanganan aman jika nilai pH/N bernilai NaN
+        ph_val = getattr(row, 'ph', 0)
+        n_val = getattr(row, 'n', 0)
+        status_warna = "#deff9a" if (pd.notna(ph_val) and 5.5 <= ph_val <= 7.0 and pd.notna(n_val) and n_val >= 80) else "#ff4b4b"
+        
+        # PERBAIKAN: Konversi aman id_grup ke integer
+        id_str = str(int(row.id_grup)) if pd.notna(row.id_grup) else "0"
+        
         folium.CircleMarker(
             location=[row.lat, row.lon], radius=12, color=status_warna, fill=True, fill_opacity=0.8,
-            popup=f"ID:{int(row.id_grup)}"
+            popup=f"ID:{id_str}"
         ).add_to(m)
 
 out = st_folium(m, width="100%", height=850, returned_objects=["last_object_clicked_popup"])
@@ -166,9 +170,8 @@ if out and out.get("last_object_clicked_popup"):
     except:
         pass
 
-# --- TAMPILAN KARTU INFORMASI (DATA UTK DINAS & PETANI) ---
+# --- TAMPILAN KARTU INFORMASI ---
 if st.session_state.selected_id and not df.empty:
-    # Mengambil baris data PALING BARU (paling bawah di sheets) jika ID-nya duplikat
     target_rows = df[df['id_grup'] == st.session_state.selected_id]
     if not target_rows.empty:
         s = target_rows.iloc[-1]
@@ -183,7 +186,6 @@ if st.session_state.selected_id and not df.empty:
             st.query_params.clear()
             st.rerun()
 
-        # String HTML wajib rata kiri penuh agar Streamlit tidak mengubahnya menjadi blok teks kode mentah
         card_html = """
 <div class="floating-card">
     <div style="margin-bottom: 10px;">
@@ -214,25 +216,32 @@ if st.session_state.selected_id and not df.empty:
         st.markdown(
             card_html.format(
                 ds=ds, kc=kc, mdpl=mdpl, emoji=emoji, raw_tanaman=raw_tanaman,
-                val_id=str(int(s['id_grup'])), val_n=str(s['n']), val_p=str(s['p']), 
-                val_k=str(s['k']), val_ph=str(s['ph']), val_temp=str(s['temp']), 
-                val_moist=str(s['moist']), val_ec=str(s['ec']),
+                val_id=str(int(s['id_grup'])) if pd.notna(s['id_grup']) else "-", 
+                val_n=str(s['n']) if pd.notna(s['n']) else "-", 
+                val_p=str(s['p']) if pd.notna(s['p']) else "-", 
+                val_k=str(s['k']) if pd.notna(s['k']) else "-", 
+                val_ph=str(s['ph']) if pd.notna(s['ph']) else "-", 
+                val_temp=str(s['temp']) if pd.notna(s['temp']) else "-", 
+                val_moist=str(s['moist']) if pd.notna(s['moist']) else "-", 
+                val_ec=str(s['ec']) if pd.notna(s['ec']) else "-",
                 val_waktu=str(s['waktu_ukur']) if 'waktu_ukur' in df.columns and pd.notna(s['waktu_ukur']) else "Tidak tersedia"
             ), 
             unsafe_allow_html=True
         )
 
-        # EXPANDER UTK REKOMENDASI DINAS (Dimasukkan ke Sidebar agar Layout Utama Tetap Ramping)
         with st.sidebar:
             st.divider()
             with st.expander("🔍 ANALISIS DINAS & REKOMENDASI", expanded=True):
-                prioritas = "TINGGI (Kritis)" if (s['n'] < 50 or s['ph'] < 5.0) else "Normal"
+                n_val = s['n'] if pd.notna(s['n']) else 0
+                ph_val = s['ph'] if pd.notna(s['ph']) else 7.0
+                
+                prioritas = "TINGGI (Kritis)" if (n_val < 50 or ph_val < 5.0) else "Normal"
                 st.write(f"**Status Lahan:** {prioritas}")
-                if s['n'] < 80:
+                if n_val < 80:
                     st.error("Rekomendasi: Subsidi pupuk Nitrogen (Urea/ZA) diperlukan.")
-                if s['ph'] < 5.5:
+                if ph_val < 5.5:
                     st.warning("Kondisi: Tanah Asam. Butuh intervensi Kapur Dolomit.")
-                elif s['ph'] > 7.5:
+                elif ph_val > 7.5:
                     st.warning("Kondisi: Tanah Basa. Butuh aplikasi Belerang.")
                 else:
                     st.success("Kondisi: Tanah sehat dan optimal.")
